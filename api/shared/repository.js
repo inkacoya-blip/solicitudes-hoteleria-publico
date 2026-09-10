@@ -26,7 +26,8 @@ async function getClientName(clienteId) {
 
 /** TipoServicio de las tarifas ACTIVAS del contrato — es la fuente real de "qué está contratado", no una fotografía guardada en el canal. */
 async function getActiveContractServiceTypes(contratoId) {
-  const items = await getListItems(LISTS.contractRates, `filter=fields/ContratoId eq ${contratoId} and fields/Activo eq 1&top=500`);
+  // Graph espera true/false para Boolean, no 1/0 como el REST clasico de SharePoint (eso causaba un 400).
+  const items = await getListItems(LISTS.contractRates, `filter=fields/ContratoId eq ${contratoId} and fields/Activo eq true&top=500`);
   return Array.from(new Set(items.map((item) => item.fields.TipoServicio)));
 }
 
@@ -34,7 +35,7 @@ async function getActiveContractServiceTypes(contratoId) {
 async function findOfficialRequest(contratoId, fechaServicio, tipoServicio) {
   const items = await getListItems(
     LISTS.serviceRequests,
-    `filter=fields/ContratoId eq ${contratoId} and fields/FechaServicio eq '${fechaServicio}' and fields/TipoServicio eq '${tipoServicio}' and fields/EstadoSolicitud eq 'Oficial'&top=1`
+    `filter=fields/ContratoId eq ${contratoId} and fields/FechaServicio eq ${fechaServicio} and fields/TipoServicio eq '${tipoServicio}' and fields/EstadoSolicitud eq 'Oficial'&top=1`
   );
   return items[0];
 }
@@ -64,9 +65,10 @@ async function logRejectedAttempt(canalId, codigoCanal, motivoRechazo) {
  */
 async function countRecentAttempts(canalId, codigoCanal, minutesWindow) {
   const since = new Date(Date.now() - minutesWindow * 60 * 1000).toISOString();
+  // Graph espera valores DateTime sin comillas en el filtro (formato ISO 8601 plano).
   const [accepted, rejected] = await Promise.all([
-    getListItems(LISTS.serviceRequests, `filter=fields/CodigoCanal eq '${codigoCanal}' and fields/FechaRecepcion ge '${since}'&top=200`),
-    getListItems(LISTS.rejectedAttempts, `filter=fields/CanalId eq ${canalId} and fields/FechaRecepcion ge '${since}'&top=200`)
+    getListItems(LISTS.serviceRequests, `filter=fields/CodigoCanal eq '${codigoCanal}' and fields/FechaRecepcion ge ${since}&top=200`),
+    getListItems(LISTS.rejectedAttempts, `filter=fields/CanalId eq ${canalId} and fields/FechaRecepcion ge ${since}&top=200`)
   ]);
   return accepted.length + rejected.length;
 }
