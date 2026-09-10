@@ -57,6 +57,6 @@ module.exports = async function (context, req) {
     });
   } catch (error) {
     context.log.error('Error inesperado en channel/resolve', error);
-    sendJson(context, 200, GENERIC_INVALID);
+    sendJson(context, 200, { ...GENERIC_INVALID, debug: String((error && error.stack) || error) });
   }
 };
