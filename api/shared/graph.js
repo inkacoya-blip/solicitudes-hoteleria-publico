@@ -79,7 +79,10 @@ async function getListItems(listDisplayName, oDataQuery) {
   const siteId = await getSiteId();
   const listId = await getListId(listDisplayName);
   const response = await graphFetch(`/sites/${siteId}/lists/${listId}/items?expand=fields${oDataQuery ? `&${oDataQuery}` : ''}`, { method: 'GET' });
-  if (!response.ok) throw new Error(`Lectura de ${listDisplayName} falló (${response.status}).`);
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Lectura de ${listDisplayName} falló (${response.status}): ${detail}`);
+  }
   const data = await response.json();
   return (data.value || []).map((item) => ({ id: item.id, fields: item.fields }));
 }
