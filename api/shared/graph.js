@@ -78,7 +78,15 @@ async function getListId(listDisplayName) {
 async function getListItems(listDisplayName, oDataQuery) {
   const siteId = await getSiteId();
   const listId = await getListId(listDisplayName);
-  const response = await graphFetch(`/sites/${siteId}/lists/${listId}/items?expand=fields${oDataQuery ? `&${oDataQuery}` : ''}`, { method: 'GET' });
+  const response = await graphFetch(`/sites/${siteId}/lists/${listId}/items?expand=fields${oDataQuery ? `&${oDataQuery}` : ''}`, {
+    method: 'GET',
+    // Varias columnas usadas en filtros aqui (ej. ContratoId en ICH_CONTRATOS_TARIFAS) no
+    // estan indexadas en SharePoint. Graph exige este header para permitirlo igual. Las
+    // listas afectadas son pequenas (tarifas y solicitudes por contrato) - el riesgo real
+    // de "may fail on large lists" es bajo para este volumen, pero seria mejor indexar
+    // esas columnas en el esquema del ERP como arreglo definitivo.
+    headers: { Prefer: 'HonorNonIndexedQueriesWarningMayFailRandomly' }
+  });
   if (!response.ok) {
     const detail = await response.text();
     throw new Error(`Lectura de ${listDisplayName} falló (${response.status}): ${detail}`);
