@@ -26,9 +26,10 @@ async function getClientName(clienteId) {
 
 /** TipoServicio de las tarifas ACTIVAS del contrato — es la fuente real de "qué está contratado", no una fotografía guardada en el canal. */
 async function getActiveContractServiceTypes(contratoId) {
-  // Graph espera true/false para Boolean, no 1/0 como el REST clasico de SharePoint (eso causaba un 400).
-  const items = await getListItems(LISTS.contractRates, `filter=fields/ContratoId eq ${contratoId} and fields/Activo eq true&top=500`);
-  return Array.from(new Set(items.map((item) => item.fields.TipoServicio)));
+  // Activo se filtra en JS, no en el OData de Graph: evita la ambiguedad de si un Yes/No
+  // de SharePoint se representa como true/false o 1/0 al filtrar via Graph.
+  const items = await getListItems(LISTS.contractRates, `filter=fields/ContratoId eq ${contratoId}&top=500`);
+  return Array.from(new Set(items.filter((item) => item.fields.Activo).map((item) => item.fields.TipoServicio)));
 }
 
 /** La solicitud OFICIAL vigente hoy para esa fecha/servicio, si existe (no cuenta 'Extraordinaria pendiente' — igual que en el ERP). */
