@@ -1,0 +1,16 @@
+{
+  "globalHeaders": {
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  },
+  "routes": [
+    {
+      "route": "/api/*",
+      "methods": ["POST"]
+    }
+  ],
+  "navigationFallback": {
+    "rewrite": "/index.html"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "solicitudes-hoteleria-api",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "shared/*.js",
+  "scripts": {
+    "test": "node shared/_time.test.js && node shared/_serviceCatalog.test.js"
+  },
+  "dependencies": {}
+}

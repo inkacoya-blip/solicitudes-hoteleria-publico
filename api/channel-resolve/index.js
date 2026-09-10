@@ -1,0 +1,63 @@
+const { hashToken } = require('../shared/hash');
+const {
+  findChannelByTokenHash,
+  getClientName,
+  getActiveContractServiceTypes,
+  logRejectedAttempt
+} = require('../shared/repository');
+const { authorizedServices } = require('../shared/serviceCatalog');
+
+// Siempre la misma forma de respuesta ante cualquier falla — nunca revela si el token
+// alguna vez existió, ni por el mensaje ni distinguiendo el caso en el código HTTP.
+const GENERIC_INVALID = { ok: false, message: 'Enlace no válido.' };
+
+module.exports = async function (context, req) {
+  const token = req.body && typeof req.body.token === 'string' ? req.body.token.trim() : '';
+  if (!token) {
+    context.res = { status: 200, jsonBody: GENERIC_INVALID };
+    return;
+  }
+
+  const tokenHash = hashToken(token);
+  let channel;
+  try {
+    channel = await findChannelByTokenHash(tokenHash);
+  } catch (error) {
+    context.log.error('Error resolviendo canal', error);
+    context.res = { status: 200, jsonBody: GENERIC_INVALID };
+    return;
+  }
+
+  if (!channel) {
+    // Token que no coincide con ningún canal: SOLO diagnóstico técnico (este log),
+    // nunca una fila en SharePoint — evita que adivinar tokens llene la lista.
+    context.log.warn('Intento con token no reconocido.');
+    context.res = { status: 200, jsonBody: GENERIC_INVALID };
+    return;
+  }
+
+  const fields = channel.fields;
+  const expired = Boolean(fields.FechaExpiracion) && new Date(fields.FechaExpiracion).getTime() < Date.now();
+  if (fields.Estado !== 'Activo' || expired) {
+    await logRejectedAttempt(channel.id, fields.Codigo, fields.Estado !== 'Activo' ? 'Canal inactivo' : 'Canal expirado');
+    context.res = { status: 200, jsonBody: GENERIC_INVALID };
+    return;
+  }
+
+  const [clienteNombre, activeServiceTypes] = await Promise.all([
+    getClientName(fields.ClienteId),
+    getActiveContractServiceTypes(fields.ContratoId)
+  ]);
+  const servicios = authorizedServices(fields.Modalidad, activeServiceTypes, fields.ExcepcionesServicios);
+
+  context.res = {
+    status: 200,
+    jsonBody: {
+      ok: true,
+      clienteNombre: clienteNombre || '',
+      modalidad: fields.Modalidad,
+      servicios,
+      horaCierre: fields.HoraCierre || '18:00'
+    }
+  };
+};
