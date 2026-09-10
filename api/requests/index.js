@@ -173,6 +173,6 @@ module.exports = async function (context, req) {
       : GENERIC_OK);
   } catch (error) {
     context.log.error('Error inesperado en /api/requests', error);
-    sendJson(context, 200, { ...GENERIC_INVALID, debug: String((error && error.stack) || error) });
+    sendJson(context, 200, GENERIC_INVALID);
   }
 };

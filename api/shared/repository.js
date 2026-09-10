@@ -36,9 +36,9 @@ async function getActiveContractServiceTypes(contratoId) {
 async function findOfficialRequest(contratoId, fechaServicio, tipoServicio) {
   const items = await getListItems(
     LISTS.serviceRequests,
-    `filter=fields/ContratoId eq ${contratoId} and fields/FechaServicio eq ${fechaServicio} and fields/TipoServicio eq '${tipoServicio}' and fields/EstadoSolicitud eq 'Oficial'&top=1`
+    `filter=fields/ContratoId eq ${contratoId} and fields/TipoServicio eq '${tipoServicio}' and fields/EstadoSolicitud eq 'Oficial'&top=200`
   );
-  return items[0];
+  return items.find((item) => (item.fields.FechaServicio || '').slice(0, 10) === fechaServicio);
 }
 
 async function findByClaveFila(claveFila) {
@@ -65,13 +65,16 @@ async function logRejectedAttempt(canalId, codigoCanal, motivoRechazo) {
  * porque las filas aceptadas en ICH_SOLICITUDES_SERVICIO no guardan el hash del token.
  */
 async function countRecentAttempts(canalId, codigoCanal, minutesWindow) {
-  const since = new Date(Date.now() - minutesWindow * 60 * 1000).toISOString();
-  // Graph espera valores DateTime sin comillas en el filtro (formato ISO 8601 plano).
+  // La fecha se filtra en JS, no en el OData de Graph — el filtro de fecha ahi dio
+  // "Invalid request" sin mas detalle; para el volumen real de este canal (unas pocas
+  // filas por ventana de minutos) traer todo por CodigoCanal/CanalId y filtrar es simple y robusto.
+  const sinceMs = Date.now() - minutesWindow * 60 * 1000;
   const [accepted, rejected] = await Promise.all([
-    getListItems(LISTS.serviceRequests, `filter=fields/CodigoCanal eq '${codigoCanal}' and fields/FechaRecepcion ge ${since}&top=200`),
-    getListItems(LISTS.rejectedAttempts, `filter=fields/CanalId eq ${canalId} and fields/FechaRecepcion ge ${since}&top=200`)
+    getListItems(LISTS.serviceRequests, `filter=fields/CodigoCanal eq '${codigoCanal}'&top=200`),
+    getListItems(LISTS.rejectedAttempts, `filter=fields/CanalId eq ${canalId}&top=200`)
   ]);
-  return accepted.length + rejected.length;
+  const recent = (items) => items.filter((item) => new Date(item.fields.FechaRecepcion).getTime() >= sinceMs);
+  return recent(accepted).length + recent(rejected).length;
 }
 
 module.exports = {
