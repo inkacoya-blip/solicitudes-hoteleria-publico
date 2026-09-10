@@ -6,6 +6,7 @@ const {
   logRejectedAttempt
 } = require('../shared/repository');
 const { authorizedServices } = require('../shared/serviceCatalog');
+const { sendJson } = require('../shared/respond');
 
 // Siempre la misma forma de respuesta ante cualquier falla — nunca revela si el token
 // alguna vez existió, ni por el mensaje ni distinguiendo el caso en el código HTTP.
@@ -14,7 +15,7 @@ const GENERIC_INVALID = { ok: false, message: 'Enlace no válido.' };
 module.exports = async function (context, req) {
   const token = req.body && typeof req.body.token === 'string' ? req.body.token.trim() : '';
   if (!token) {
-    context.res = { status: 200, jsonBody: GENERIC_INVALID };
+    sendJson(context, 200, GENERIC_INVALID);
     return;
   }
 
@@ -24,7 +25,7 @@ module.exports = async function (context, req) {
     channel = await findChannelByTokenHash(tokenHash);
   } catch (error) {
     context.log.error('Error resolviendo canal', error);
-    context.res = { status: 200, jsonBody: GENERIC_INVALID };
+    sendJson(context, 200, GENERIC_INVALID);
     return;
   }
 
@@ -32,7 +33,7 @@ module.exports = async function (context, req) {
     // Token que no coincide con ningún canal: SOLO diagnóstico técnico (este log),
     // nunca una fila en SharePoint — evita que adivinar tokens llene la lista.
     context.log.warn('Intento con token no reconocido.');
-    context.res = { status: 200, jsonBody: GENERIC_INVALID };
+    sendJson(context, 200, GENERIC_INVALID);
     return;
   }
 
@@ -40,7 +41,7 @@ module.exports = async function (context, req) {
   const expired = Boolean(fields.FechaExpiracion) && new Date(fields.FechaExpiracion).getTime() < Date.now();
   if (fields.Estado !== 'Activo' || expired) {
     await logRejectedAttempt(channel.id, fields.Codigo, fields.Estado !== 'Activo' ? 'Canal inactivo' : 'Canal expirado');
-    context.res = { status: 200, jsonBody: GENERIC_INVALID };
+    sendJson(context, 200, GENERIC_INVALID);
     return;
   }
 
@@ -50,14 +51,11 @@ module.exports = async function (context, req) {
   ]);
   const servicios = authorizedServices(fields.Modalidad, activeServiceTypes, fields.ExcepcionesServicios);
 
-  context.res = {
-    status: 200,
-    jsonBody: {
-      ok: true,
-      clienteNombre: clienteNombre || '',
-      modalidad: fields.Modalidad,
-      servicios,
-      horaCierre: fields.HoraCierre || '18:00'
-    }
-  };
+  sendJson(context, 200, {
+    ok: true,
+    clienteNombre: clienteNombre || '',
+    modalidad: fields.Modalidad,
+    servicios,
+    horaCierre: fields.HoraCierre || '18:00'
+  });
 };

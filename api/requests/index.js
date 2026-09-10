@@ -1,6 +1,7 @@
 const { hashToken } = require('../shared/hash');
 const { isWithinDeadline, chileWallClock } = require('../shared/time');
 const { authorizedServices } = require('../shared/serviceCatalog');
+const { sendJson } = require('../shared/respond');
 const {
   findChannelByTokenHash,
   getContractServiceLabel,
@@ -52,18 +53,18 @@ module.exports = async function (context, req) {
   // se responde OK genérico sin hacer nada, para no darle ninguna señal distinta.
   if (typeof body.sitioWeb === 'string' && body.sitioWeb.trim() !== '') {
     context.log.warn('Honeypot activado — probable bot.');
-    context.res = { status: 200, jsonBody: GENERIC_OK };
+    sendJson(context, 200, GENERIC_OK);
     return;
   }
 
   if (!token || !submissionId || !isValidDateString(fechaServicio) || servicios.length === 0) {
-    context.res = { status: 200, jsonBody: GENERIC_INVALID };
+    sendJson(context, 200, GENERIC_INVALID);
     return;
   }
 
   const now = new Date();
   if (!isReasonableServiceDate(fechaServicio, now)) {
-    context.res = { status: 200, jsonBody: GENERIC_INVALID };
+    sendJson(context, 200, GENERIC_INVALID);
     return;
   }
 
@@ -73,14 +74,14 @@ module.exports = async function (context, req) {
     channel = await findChannelByTokenHash(tokenHash);
   } catch (error) {
     context.log.error('Error resolviendo canal', error);
-    context.res = { status: 200, jsonBody: GENERIC_INVALID };
+    sendJson(context, 200, GENERIC_INVALID);
     return;
   }
 
   if (!channel) {
     // Token no reconocido: solo diagnóstico técnico, nunca una fila en SharePoint.
     context.log.warn('Intento de envío con token no reconocido.');
-    context.res = { status: 200, jsonBody: GENERIC_INVALID };
+    sendJson(context, 200, GENERIC_INVALID);
     return;
   }
 
@@ -88,14 +89,14 @@ module.exports = async function (context, req) {
   const expired = Boolean(fields.FechaExpiracion) && new Date(fields.FechaExpiracion).getTime() < Date.now();
   if (fields.Estado !== 'Activo' || expired) {
     await logRejectedAttempt(channel.id, fields.Codigo, fields.Estado !== 'Activo' ? 'Canal inactivo' : 'Canal expirado');
-    context.res = { status: 200, jsonBody: GENERIC_INVALID };
+    sendJson(context, 200, GENERIC_INVALID);
     return;
   }
 
   const attemptCount = await countRecentAttempts(channel.id, fields.Codigo, RATE_LIMIT_WINDOW_MINUTES);
   if (attemptCount >= RATE_LIMIT_MAX_ATTEMPTS) {
     await logRejectedAttempt(channel.id, fields.Codigo, 'Límite de intentos excedido');
-    context.res = { status: 200, jsonBody: GENERIC_INVALID };
+    sendJson(context, 200, GENERIC_INVALID);
     return;
   }
 
@@ -108,19 +109,19 @@ module.exports = async function (context, req) {
     const cantidad = Number(item && item.cantidad);
     if (!permitted.includes(tipoServicio)) {
       await logRejectedAttempt(channel.id, fields.Codigo, 'Servicio no autorizado');
-      context.res = { status: 200, jsonBody: GENERIC_INVALID };
+      sendJson(context, 200, GENERIC_INVALID);
       return;
     }
     if (!Number.isInteger(cantidad) || cantidad < 0 || cantidad > MAX_CANTIDAD) {
       await logRejectedAttempt(channel.id, fields.Codigo, 'Validación de datos inválida');
-      context.res = { status: 200, jsonBody: GENERIC_INVALID };
+      sendJson(context, 200, GENERIC_INVALID);
       return;
     }
     if (cantidad > 0) cleanServices.push({ tipoServicio, cantidad });
   }
   if (cleanServices.length === 0) {
     await logRejectedAttempt(channel.id, fields.Codigo, 'Validación de datos inválida');
-    context.res = { status: 200, jsonBody: GENERIC_INVALID };
+    sendJson(context, 200, GENERIC_INVALID);
     return;
   }
 
@@ -170,15 +171,12 @@ module.exports = async function (context, req) {
         continue;
       }
       context.log.error('Error creando solicitud', error);
-      context.res = { status: 200, jsonBody: GENERIC_INVALID };
+      sendJson(context, 200, GENERIC_INVALID);
       return;
     }
   }
 
-  context.res = {
-    status: 200,
-    jsonBody: fueraDePlazo
-      ? { ok: true, message: 'Solicitud recibida fuera de plazo. Queda pendiente de aceptación interna.' }
-      : GENERIC_OK
-  };
+  sendJson(context, 200, fueraDePlazo
+    ? { ok: true, message: 'Solicitud recibida fuera de plazo. Queda pendiente de aceptación interna.' }
+    : GENERIC_OK);
 };
