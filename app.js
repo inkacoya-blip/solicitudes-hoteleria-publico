@@ -96,12 +96,12 @@
       form.appendChild(input);
     });
 
-    form.appendChild(el('label', { text: 'Nombre de quien solicita (opcional)', for: 'nombre' }));
-    var nombre = el('input', { type: 'text', id: 'nombre', name: 'nombre' });
+    form.appendChild(el('label', { text: 'Nombre de quien solicita', for: 'nombre' }));
+    var nombre = el('input', { type: 'text', id: 'nombre', name: 'nombre', required: 'required' });
     form.appendChild(nombre);
 
-    form.appendChild(el('label', { text: 'Correo (opcional)', for: 'correo' }));
-    var correo = el('input', { type: 'email', id: 'correo', name: 'correo' });
+    form.appendChild(el('label', { text: 'Correo de quien solicita', for: 'correo' }));
+    var correo = el('input', { type: 'email', id: 'correo', name: 'correo', required: 'required' });
     form.appendChild(correo);
 
     // Honeypot: un visitante real nunca ve ni llena este campo.
@@ -122,6 +122,11 @@
 
       if (servicios.length === 0) {
         renderMessage('Ingresa al menos una cantidad mayor a cero.', 'error');
+        return;
+      }
+
+      if (!nombre.value.trim() || !correo.value.trim()) {
+        renderMessage('Ingresa tu nombre y correo.', 'error');
         return;
       }
 

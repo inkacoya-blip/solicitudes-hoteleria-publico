@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { isWithinDeadline, chileWallClock, chileTomorrow } = require('./time');
+const { isWithinDeadline, chileWallClock, chileTomorrow, anticipationDays } = require('./time');
 
 // Verificado con Intl directamente (ver salida de consola): el 10-sep-2026 Chile YA
 // está en horario de verano (GMT-3), no GMT-4 — confirma por qué no hay que asumir
@@ -22,6 +22,20 @@ assert.strictEqual(isWithinDeadline('2026-10-01', '18:00', new Date('2026-09-30T
 
 console.log('chileWallClock(2026-09-10T22:00:00Z) =', chileWallClock(new Date('2026-09-10T22:00:00Z')));
 console.log('Todas las pruebas de plazo pasaron.');
+
+// Anticipación configurable por contrato (ej. Asmin: 48h -> 2 días, no el corte de 1 día de siempre).
+assert.strictEqual(anticipationDays(undefined), 1, 'sin definir = 24h = 1 día, compatible con contratos existentes');
+assert.strictEqual(anticipationDays(24), 1);
+assert.strictEqual(anticipationDays(48), 2);
+assert.strictEqual(anticipationDays(36), 2, 'redondea hacia arriba');
+
+// Servicio 13-sep, 48h de anticipación -> plazo vence 11-sep 18:00 Chile (GMT-3 = 21:00 UTC).
+assert.strictEqual(isWithinDeadline('2026-09-13', '18:00', new Date('2026-09-11T20:59:00Z'), 48), true, '48h: antes del plazo');
+assert.strictEqual(isWithinDeadline('2026-09-13', '18:00', new Date('2026-09-11T21:01:00Z'), 48), false, '48h: después del plazo');
+// El mismo envío, sin el parámetro de anticipación (comportamiento de siempre: 1 día antes, plazo vence el 12-sep),
+// todavía estaría dentro de plazo — la diferencia real la hacen las 48h exigidas por el contrato de Asmin.
+assert.strictEqual(isWithinDeadline('2026-09-13', '18:00', new Date('2026-09-11T21:01:00Z')), true);
+console.log('Todas las pruebas de anticipación configurable pasaron.');
 
 // chileTomorrow — usado por el arrastre automático de las 18:05.
 assert.strictEqual(chileTomorrow(new Date('2026-09-10T23:55:00Z')), '2026-09-11');

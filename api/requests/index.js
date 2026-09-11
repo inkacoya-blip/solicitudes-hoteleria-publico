@@ -4,6 +4,7 @@ const { authorizedServices } = require('../shared/serviceCatalog');
 const { sendJson } = require('../shared/respond');
 const {
   findChannelByTokenHash,
+  getContract,
   getContractServiceLabel,
   getActiveContractServiceTypes,
   findByClaveFila,
@@ -46,9 +47,10 @@ module.exports = async function (context, req) {
     const fechaServicio = body.fechaServicio;
     const tipoSolicitud = body.tipoSolicitud === 'Reemplazo' ? 'Reemplazo' : 'Solicitud diaria';
     const motivoReemplazo = typeof body.motivoReemplazo === 'string' ? body.motivoReemplazo.slice(0, 500) : undefined;
-    const solicitanteNombre = typeof body.solicitanteNombre === 'string' ? body.solicitanteNombre.slice(0, 255) : undefined;
-    const solicitanteCorreo = typeof body.solicitanteCorreo === 'string' ? body.solicitanteCorreo.slice(0, 255) : undefined;
+    const solicitanteNombre = typeof body.solicitanteNombre === 'string' ? body.solicitanteNombre.trim().slice(0, 255) : '';
+    const solicitanteCorreo = typeof body.solicitanteCorreo === 'string' ? body.solicitanteCorreo.trim().slice(0, 255) : '';
     const servicios = Array.isArray(body.servicios) ? body.servicios : [];
+    const CORREO_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     // Honeypot: campo oculto que un usuario real nunca llena. Si llegó lleno, es un bot —
     // se responde OK genérico sin hacer nada, para no darle ninguna señal distinta.
@@ -60,6 +62,12 @@ module.exports = async function (context, req) {
 
     if (!token || !submissionId || !isValidDateString(fechaServicio) || servicios.length === 0) {
       sendJson(context, 200, GENERIC_INVALID);
+      return;
+    }
+
+    // El enlace es la credencial, pero igual se exige identificar a quien envía cada solicitud.
+    if (!solicitanteNombre || !CORREO_PATTERN.test(solicitanteCorreo)) {
+      sendJson(context, 200, { ok: false, message: 'Ingresa tu nombre y un correo válido.' });
       return;
     }
 
@@ -120,10 +128,12 @@ module.exports = async function (context, req) {
     }
 
     // Fuera de plazo NO es un rechazo: se guarda igual, pendiente de aceptación interna.
-    const fueraDePlazo = !isWithinDeadline(fechaServicio, fields.HoraCierre, now);
+    const contract = await getContract(fields.ContratoId);
+    const horasAnticipacion = contract && contract.fields.HorasAnticipacionSolicitudes;
+    const fueraDePlazo = !isWithinDeadline(fechaServicio, fields.HoraCierre, now, horasAnticipacion);
     const estadoSolicitud = fueraDePlazo ? 'Extraordinaria pendiente' : 'Oficial';
 
-    const contratoServicio = (await getContractServiceLabel(fields.ContratoId)) || '';
+    const contratoServicio = (contract && contract.fields.ContratoServicio) || (await getContractServiceLabel(fields.ContratoId)) || '';
     const fechaRecepcionIso = now.toISOString();
 
     for (const { tipoServicio, cantidad } of cleanServices) {

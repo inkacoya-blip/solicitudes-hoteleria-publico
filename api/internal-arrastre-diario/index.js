@@ -1,5 +1,5 @@
 const { chileTomorrow } = require('../shared/time');
-const { authorizedServices } = require('../shared/serviceCatalog');
+const { authorizedServices, operatesOnWeekday } = require('../shared/serviceCatalog');
 const { sendJson } = require('../shared/respond');
 const {
   listActiveChannels,
@@ -15,9 +15,9 @@ const {
  * Chile) — NO por clientes. Protegido con un secreto compartido, no con el modelo de
  * token de canal (esto no representa a un cliente, actua sobre TODOS los contratos).
  *
- * Limitacion conocida: no existe en el ERP un campo de "dias sin servicio" por contrato
- * (ej. que no opere fines de semana), asi que este arrastre no distingue esos dias —
- * queda como algo a agregar si se necesita en el futuro.
+ * Respeta IContract.DiasServicio (JSON de dias de la semana) — si el contrato no opera
+ * el dia de manana, no arrastra nada para el. Sin ese campo definido, opera todos los
+ * dias (compatibilidad con contratos existentes que nunca lo configuraron).
  */
 
 function isDuplicateValueError(error) {
@@ -51,6 +51,8 @@ module.exports = async function (context, req) {
       }
       if (!contract || contract.fields.Estado !== 'Vigente') continue;
       if (contract.fields.ProyeccionAutomatica === false) continue;
+      // Sin DiasServicio definido, opera todos los días (compatibilidad con contratos existentes).
+      if (!operatesOnWeekday(contract.fields.DiasServicio, manana)) continue;
 
       const activeServiceTypes = await getActiveContractServiceTypes(fields.ContratoId);
       const servicios = authorizedServices(fields.Modalidad, activeServiceTypes, fields.ExcepcionesServicios);

@@ -18,16 +18,29 @@ function chileWallClock(date) {
   return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
-function dayBefore(fechaServicioIso) {
+function daysBefore(fechaServicioIso, dias) {
   const [year, month, day] = fechaServicioIso.split('-').map(Number);
   const utcMidnight = new Date(Date.UTC(year, month - 1, day));
-  const previous = new Date(utcMidnight.getTime() - 24 * 60 * 60 * 1000);
+  const previous = new Date(utcMidnight.getTime() - dias * 24 * 60 * 60 * 1000);
   return `${previous.getUTCFullYear()}-${String(previous.getUTCMonth() + 1).padStart(2, '0')}-${String(previous.getUTCDate()).padStart(2, '0')}`;
 }
 
-/** true si "now" todavía está dentro del plazo para FechaServicio, con el HoraCierre del canal (default 18:00). */
-function isWithinDeadline(fechaServicioIso, horaCierre, now) {
-  const deadline = `${dayBefore(fechaServicioIso)} ${horaCierre || '18:00'}`;
+function dayBefore(fechaServicioIso) {
+  return daysBefore(fechaServicioIso, 1);
+}
+
+/**
+ * Días de anticipación exigidos, redondeados hacia arriba desde horas del contrato (48h -> 2 días).
+ * Sin definir = 24h = el corte de "el día anterior" de siempre — compatible con todos los contratos existentes.
+ */
+function anticipationDays(horasAnticipacion) {
+  const horas = Number(horasAnticipacion) > 0 ? Number(horasAnticipacion) : 24;
+  return Math.max(1, Math.ceil(horas / 24));
+}
+
+/** true si "now" todavía está dentro del plazo para FechaServicio, con el HoraCierre del canal (default 18:00) y la anticipación del contrato (default 24h/1 día). */
+function isWithinDeadline(fechaServicioIso, horaCierre, now, horasAnticipacion) {
+  const deadline = `${daysBefore(fechaServicioIso, anticipationDays(horasAnticipacion))} ${horaCierre || '18:00'}`;
   return chileWallClock(now) <= deadline;
 }
 
@@ -39,4 +52,4 @@ function chileTomorrow(now) {
   return `${tomorrow.getUTCFullYear()}-${String(tomorrow.getUTCMonth() + 1).padStart(2, '0')}-${String(tomorrow.getUTCDate()).padStart(2, '0')}`;
 }
 
-module.exports = { chileWallClock, isWithinDeadline, chileTomorrow };
+module.exports = { chileWallClock, isWithinDeadline, chileTomorrow, anticipationDays };
