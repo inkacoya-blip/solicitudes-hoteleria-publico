@@ -31,4 +31,12 @@ function isWithinDeadline(fechaServicioIso, horaCierre, now) {
   return chileWallClock(now) <= deadline;
 }
 
-module.exports = { chileWallClock, isWithinDeadline };
+/** Fecha de mañana en el calendario de Chile (no UTC) — para el arrastre automático de las 18:05. */
+function chileTomorrow(now) {
+  const todayChile = chileWallClock(now).slice(0, 10);
+  const [year, month, day] = todayChile.split('-').map(Number);
+  const tomorrow = new Date(Date.UTC(year, month - 1, day) + 24 * 60 * 60 * 1000);
+  return `${tomorrow.getUTCFullYear()}-${String(tomorrow.getUTCMonth() + 1).padStart(2, '0')}-${String(tomorrow.getUTCDate()).padStart(2, '0')}`;
+}
+
+module.exports = { chileWallClock, isWithinDeadline, chileTomorrow };

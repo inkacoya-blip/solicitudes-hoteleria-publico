@@ -9,6 +9,35 @@ const LISTS = {
   rejectedAttempts: 'ICH_SOLICITUDES_RECHAZADAS'
 };
 
+async function listActiveChannels() {
+  const items = await getListItems(LISTS.channels, `top=500`);
+  return items.filter((item) => item.fields.Estado === 'Activo');
+}
+
+function getContract(contratoId) {
+  return getListItemById(LISTS.contracts, contratoId);
+}
+
+/** Ultima cantidad OFICIAL valida para ese servicio, en una fecha anterior a la indicada (nunca inventa un valor). */
+async function getLastOfficialQuantityBefore(contratoId, tipoServicio, beforeDateIso) {
+  const items = await getListItems(
+    LISTS.serviceRequests,
+    `filter=fields/ContratoId eq ${contratoId} and fields/TipoServicio eq '${tipoServicio}' and fields/EstadoSolicitud eq 'Oficial'&top=500`
+  );
+  const prior = items
+    .filter((item) => (item.fields.FechaServicio || '').slice(0, 10) < beforeDateIso)
+    .sort((a, b) => (a.fields.FechaServicio < b.fields.FechaServicio ? 1 : -1));
+  return prior[0] ? prior[0].fields.CantidadOficial : undefined;
+}
+
+async function hasOfficialRequestForDate(contratoId, tipoServicio, fechaIso) {
+  const items = await getListItems(
+    LISTS.serviceRequests,
+    `filter=fields/ContratoId eq ${contratoId} and fields/TipoServicio eq '${tipoServicio}' and fields/EstadoSolicitud eq 'Oficial'&top=500`
+  );
+  return items.some((item) => (item.fields.FechaServicio || '').slice(0, 10) === fechaIso);
+}
+
 async function getContractServiceLabel(contratoId) {
   const item = await getListItemById(LISTS.contracts, contratoId);
   return item && item.fields.ContratoServicio;
@@ -86,5 +115,9 @@ module.exports = {
   findByClaveFila,
   createServiceRequest,
   logRejectedAttempt,
-  countRecentAttempts
+  countRecentAttempts,
+  listActiveChannels,
+  getContract,
+  getLastOfficialQuantityBefore,
+  hasOfficialRequestForDate
 };

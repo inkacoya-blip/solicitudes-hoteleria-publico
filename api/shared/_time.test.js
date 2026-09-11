@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { isWithinDeadline, chileWallClock } = require('./time');
+const { isWithinDeadline, chileWallClock, chileTomorrow } = require('./time');
 
 // Verificado con Intl directamente (ver salida de consola): el 10-sep-2026 Chile YA
 // está en horario de verano (GMT-3), no GMT-4 — confirma por qué no hay que asumir
@@ -22,3 +22,10 @@ assert.strictEqual(isWithinDeadline('2026-10-01', '18:00', new Date('2026-09-30T
 
 console.log('chileWallClock(2026-09-10T22:00:00Z) =', chileWallClock(new Date('2026-09-10T22:00:00Z')));
 console.log('Todas las pruebas de plazo pasaron.');
+
+// chileTomorrow — usado por el arrastre automático de las 18:05.
+assert.strictEqual(chileTomorrow(new Date('2026-09-10T23:55:00Z')), '2026-09-11');
+assert.strictEqual(chileTomorrow(new Date('2026-09-30T23:55:00Z')), '2026-10-01', 'cruce de mes');
+// 2026-09-11T02:59:00Z = 2026-09-10 23:59 Chile (GMT-3) -> "hoy" en Chile sigue siendo 10-sep.
+assert.strictEqual(chileTomorrow(new Date('2026-09-11T02:59:00Z')), '2026-09-11');
+console.log('Todas las pruebas de chileTomorrow pasaron.');
