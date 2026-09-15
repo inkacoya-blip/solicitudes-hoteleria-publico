@@ -8,6 +8,7 @@ const {
   getContractServiceLabel,
   getActiveContractServiceTypes,
   findByClaveFila,
+  findLatestRequestForReplacement,
   createServiceRequest,
   logRejectedAttempt,
   countRecentAttempts
@@ -68,6 +69,11 @@ module.exports = async function (context, req) {
     // El enlace es la credencial, pero igual se exige identificar a quien envía cada solicitud.
     if (!solicitanteNombre || !CORREO_PATTERN.test(solicitanteCorreo)) {
       sendJson(context, 200, { ok: false, message: 'Ingresa tu nombre y un correo válido.' });
+      return;
+    }
+
+    if (tipoSolicitud === 'Reemplazo' && !(motivoReemplazo && motivoReemplazo.trim())) {
+      sendJson(context, 200, { ok: false, message: 'Indica el motivo del reemplazo.' });
       return;
     }
 
@@ -144,6 +150,11 @@ module.exports = async function (context, req) {
       const existing = await findByClaveFila(claveFila);
       if (existing) continue;
 
+      // Un reemplazo nunca sobrescribe: solo se vincula al registro anterior para reconstruir el historial.
+      const previous = tipoSolicitud === 'Reemplazo'
+        ? await findLatestRequestForReplacement(fields.ContratoId, tipoServicio, fechaServicio)
+        : undefined;
+
       try {
         await createServiceRequest({
           Title: claveFila,
@@ -164,6 +175,7 @@ module.exports = async function (context, req) {
           CodigoCanal: fields.Codigo,
           TipoSolicitud: tipoSolicitud,
           MotivoReemplazo: tipoSolicitud === 'Reemplazo' ? motivoReemplazo : undefined,
+          ReemplazaSolicitudId: previous ? previous.id : undefined,
           FueraDePlazo: fueraDePlazo,
           SubmissionId: submissionId,
           ClaveFila: claveFila

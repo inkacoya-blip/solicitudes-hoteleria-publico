@@ -5,6 +5,20 @@
   var submissionId = null;
 
   /**
+   * Emblema simple (SVG) en vez del logo real, que es una foto/PNG del ERP: transferir
+   * ese binario a este archivo de forma exacta no fue posible (se corrompía) — un SVG
+   * hecho de texto/formas se reproduce siempre igual porque no es un blob opaco.
+   */
+  var LOGO_SVG = '<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+    '<rect x="0" y="0" width="48" height="48" rx="8" fill="#ffffff"/>' +
+    '<g transform="translate(24,24)">' +
+    '<path d="M0,-16 L11,-4 L0,0 L-11,-4 Z" fill="#8a4b2e"/>' +
+    '<path d="M16,0 L4,11 L0,0 L4,-11 Z" fill="#c96a2e"/>' +
+    '<path d="M0,16 L-11,4 L0,0 L11,4 Z" fill="#1d4d6b"/>' +
+    '<path d="M-16,0 L-4,-11 L0,0 L-4,11 Z" fill="#5a6b2e"/>' +
+    '</g></svg>';
+
+  /**
    * El token viaja en el fragmento (#/c/<token>) para que nunca llegue al servidor
    * por URL ni quede en logs de acceso. Se borra de la barra de direcciones de
    * inmediato con history.replaceState — desde acá en adelante solo vive en memoria
@@ -52,9 +66,25 @@
   function renderForm(data, token) {
     submissionId = crypto.randomUUID();
     app.innerHTML = '';
-    app.appendChild(el('h1', { text: data.clienteNombre || 'Solicitud diaria' }));
-    app.appendChild(el('p', { class: 'subtitle', text: 'Envía o modifica hasta las 18:00 del día anterior. Para reemplazar, usa la misma fecha.' }));
 
+    var header = el('header', { class: 'brand-header' });
+    var logoWrap = el('div', { class: 'brand-logo' });
+    logoWrap.innerHTML = LOGO_SVG;
+    var titleBlock = el('div', {});
+    titleBlock.appendChild(el('h1', { text: 'Solicitud diaria · ' + (data.clienteNombre || '') }));
+    if (data.modalidad) titleBlock.appendChild(el('p', { class: 'modalidad', text: data.modalidad }));
+    header.appendChild(logoWrap);
+    header.appendChild(titleBlock);
+    app.appendChild(header);
+
+    var horaCierre = data.horaCierre || '18:00';
+    var condiciones = el('p', {
+      class: 'conditions',
+      text: 'Envía o modifica hasta las ' + horaCierre + ' del día anterior al servicio. Fuera de ese plazo, tu solicitud queda registrada como extraordinaria pendiente de aceptación interna. Si no llega una solicitud válida antes del plazo, se aplica la proyección automática con la última cantidad oficial confirmada.'
+    });
+    app.appendChild(condiciones);
+
+    var formBody = el('div', { class: 'form-body' });
     var form = el('form', {});
 
     var fechaLabel = el('label', { text: 'Fecha del servicio', for: 'fecha' });
@@ -84,6 +114,9 @@
       var isReemplazo = form.querySelector('input[name="tipoSolicitud"]:checked').value === 'Reemplazo';
       motivoLabel.hidden = !isReemplazo;
       motivo.hidden = !isReemplazo;
+      // El motivo es obligatorio solo cuando el envío es un reemplazo — nunca en una solicitud inicial.
+      if (isReemplazo) motivo.setAttribute('required', 'required');
+      else motivo.removeAttribute('required');
     });
 
     var serviceInputs = {};
@@ -130,6 +163,12 @@
         return;
       }
 
+      var tipoSolicitudValue = form.querySelector('input[name="tipoSolicitud"]:checked').value;
+      if (tipoSolicitudValue === 'Reemplazo' && !motivo.value.trim()) {
+        renderMessage('Indica el motivo del reemplazo.', 'error');
+        return;
+      }
+
       submit.disabled = true;
       submit.textContent = 'Enviando…';
 
@@ -167,7 +206,8 @@
         });
     });
 
-    app.appendChild(form);
+    formBody.appendChild(form);
+    app.appendChild(formBody);
   }
 
   function init() {

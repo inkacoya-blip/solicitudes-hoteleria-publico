@@ -75,6 +75,22 @@ async function findByClaveFila(claveFila) {
   return items[0];
 }
 
+/**
+ * Para un reemplazo: la solicitud más reciente (cualquier estado salvo Anulada) para esa
+ * fecha/servicio del contrato — a la que ReemplazaSolicitudId debe apuntar. Nunca se edita
+ * ni se borra; solo se usa para enlazar el historial.
+ */
+async function findLatestRequestForReplacement(contratoId, tipoServicio, fechaServicio) {
+  const items = await getListItems(
+    LISTS.serviceRequests,
+    `filter=fields/ContratoId eq ${contratoId} and fields/TipoServicio eq '${tipoServicio}'&top=500`
+  );
+  const candidates = items.filter((item) => (item.fields.FechaServicio || '').slice(0, 10) === fechaServicio
+    && item.fields.EstadoSolicitud !== 'Anulada');
+  candidates.sort((a, b) => (b.fields.FechaRecepcion || '').localeCompare(a.fields.FechaRecepcion || ''));
+  return candidates[0];
+}
+
 async function createServiceRequest(fields) {
   return createListItem(LISTS.serviceRequests, fields);
 }
@@ -113,6 +129,7 @@ module.exports = {
   getActiveContractServiceTypes,
   findOfficialRequest,
   findByClaveFila,
+  findLatestRequestForReplacement,
   createServiceRequest,
   logRejectedAttempt,
   countRecentAttempts,
