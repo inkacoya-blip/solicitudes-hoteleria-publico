@@ -2,6 +2,7 @@ const { hashToken, verifySession } = require('../shared/hash');
 const { chileWallClock } = require('../shared/time');
 const { sendJson } = require('../shared/respond');
 const { findChannelByTokenHash, listRecentServiceRequests } = require('../shared/repository');
+const { displayStatus, computeReplacedIds } = require('../shared/requestStatus');
 
 const GENERIC_INVALID = { ok: false, message: 'Sesión inválida. Vuelve a ingresar.' };
 const HISTORY_DAYS = 30;
@@ -11,16 +12,6 @@ function daysAgoIso(days, now) {
   const [y, m, d] = todayChile.split('-').map(Number);
   const past = new Date(Date.UTC(y, m - 1, d) - days * 24 * 60 * 60 * 1000);
   return `${past.getUTCFullYear()}-${String(past.getUTCMonth() + 1).padStart(2, '0')}-${String(past.getUTCDate()).padStart(2, '0')}`;
-}
-
-/** 'Oficial'/'Extraordinaria pendiente'/'Arrastre automático'/'Anulada', mas 'reemplazada' cuando otra fila mas reciente la superó. */
-function displayStatus(item, replacedIds) {
-  if (replacedIds.has(item.id)) return 'reemplazada';
-  const estado = item.fields.EstadoSolicitud;
-  if (estado === 'Arrastre automático') return 'oficial-automatica';
-  if (estado === 'Extraordinaria pendiente') return 'extraordinaria-pendiente';
-  if (estado === 'Anulada') return 'no-aceptada';
-  return 'oficial-cliente';
 }
 
 /**
@@ -67,10 +58,7 @@ module.exports = async function (context, req) {
     const since = daysAgoIso(HISTORY_DAYS, new Date());
     const recent = await listRecentServiceRequests(fields.ContratoId, since);
 
-    const replacedIds = new Set();
-    recent.forEach((item) => {
-      if (item.fields.ReemplazaSolicitudId) replacedIds.add(Number(item.fields.ReemplazaSolicitudId));
-    });
+    const replacedIds = computeReplacedIds(recent);
 
     const solicitudes = recent
       .map((item) => ({
