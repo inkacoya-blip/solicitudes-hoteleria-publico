@@ -122,4 +122,17 @@ async function createListItem(listDisplayName, fields) {
   return response.json();
 }
 
-module.exports = { getSiteId, getListId, getListItems, getListItemById, createListItem };
+async function updateListItem(listDisplayName, itemId, fields) {
+  const siteId = await getSiteId();
+  const listId = await getListId(listDisplayName);
+  const response = await graphFetch(`/sites/${siteId}/lists/${listId}/items/${itemId}/fields`, {
+    method: 'PATCH',
+    body: JSON.stringify(fields)
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Actualización en ${listDisplayName}/${itemId} falló (${response.status}): ${detail}`);
+  }
+}
+
+module.exports = { getSiteId, getListId, getListItems, getListItemById, createListItem, updateListItem };

@@ -1,4 +1,4 @@
-const { getListItems, getListItemById, createListItem } = require('./graph');
+const { getListItems, getListItemById, createListItem, updateListItem } = require('./graph');
 
 const LISTS = {
   channels: 'ICH_CANALES_SOLICITUDES',
@@ -46,6 +46,21 @@ async function getContractServiceLabel(contratoId) {
 async function findChannelByTokenHash(tokenHash) {
   const items = await getListItems(LISTS.channels, `filter=fields/TokenHash eq '${tokenHash}'&top=1`);
   return items[0];
+}
+
+/** Para re-resolver el canal desde una sesion (que solo trae el CanalId) — nunca desde datos del navegador. */
+function getChannelById(canalId) {
+  return getListItemById(LISTS.channels, canalId);
+}
+
+function updateChannelPinState(canalId, fields) {
+  return updateListItem(LISTS.channels, canalId, fields);
+}
+
+/** Ultimos N dias de solicitudes de un contrato, para "Mis solicitudes" — nunca de otro contrato. */
+async function listRecentServiceRequests(contratoId, sinceDateIso) {
+  const items = await getListItems(LISTS.serviceRequests, `filter=fields/ContratoId eq ${contratoId}&top=1000`);
+  return items.filter((item) => (item.fields.FechaServicio || '').slice(0, 10) >= sinceDateIso);
 }
 
 async function getClientName(clienteId) {
@@ -124,6 +139,9 @@ async function countRecentAttempts(canalId, codigoCanal, minutesWindow) {
 
 module.exports = {
   findChannelByTokenHash,
+  getChannelById,
+  updateChannelPinState,
+  listRecentServiceRequests,
   getClientName,
   getContractServiceLabel,
   getActiveContractServiceTypes,

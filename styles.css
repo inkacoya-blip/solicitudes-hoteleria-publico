@@ -85,7 +85,7 @@ label {
   margin: 14px 0 4px;
 }
 
-input[type="number"], input[type="date"], input[type="text"], input[type="email"], textarea, select {
+input[type="number"], input[type="date"], input[type="text"], input[type="email"], input[type="password"], textarea, select {
   width: 100%;
   padding: 9px 10px;
   border: 1px solid var(--border);
@@ -123,3 +123,44 @@ button:hover:not(:disabled) { background: var(--accent-dark); }
 }
 .message.error { background: #fdecea; color: var(--error); }
 .message.success { background: #e8f5ec; color: var(--success); }
+
+/* Pestañas del portal */
+.portal-tabs { display: flex; margin: 0 24px; border-bottom: 1px solid var(--border); gap: 4px; }
+.portal-tab {
+  margin: 0; width: auto; flex: 1; background: transparent; color: var(--muted);
+  border-radius: 0; padding: 12px 8px; font-weight: 600; font-size: 0.92rem;
+  border-bottom: 3px solid transparent;
+}
+.portal-tab:hover:not(:disabled) { background: transparent; color: var(--accent-dark); }
+.portal-tab-active { color: var(--accent-dark); border-bottom: 3px solid var(--accent); }
+.portal-panel { padding-top: 4px; }
+
+.secondary-button {
+  background: #fff; color: var(--accent); border: 1px solid var(--accent);
+}
+.secondary-button:hover:not(:disabled) { background: #eef4f7; color: var(--accent-dark); }
+
+/* Mis solicitudes */
+.mis-solicitudes-list { padding: 4px 24px 20px; }
+.solicitud-card {
+  border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px;
+}
+.solicitud-card h3 { margin: 0 0 8px; font-size: 0.95rem; color: var(--accent-dark); }
+.solicitud-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; flex-wrap: wrap; }
+.solicitud-row strong { font-weight: 600; font-size: 0.92rem; }
+.solicitud-detalle { margin: 2px 0 0; font-size: 0.8rem; color: var(--muted); }
+.solicitud-explicacion { margin: 6px 0 0; font-size: 0.8rem; color: var(--text); background: #eef4f7; border-radius: 6px; padding: 8px 10px; }
+
+.status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.status-label { font-size: 0.78rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+
+.status-verde.status-dot, .status-verde.status-label { background: #1e6b3d; }
+.status-label.status-verde { color: #fff; }
+.status-azul.status-dot, .status-azul.status-label { background: #1d4d8f; }
+.status-label.status-azul { color: #fff; }
+.status-naranjo.status-dot, .status-naranjo.status-label { background: #b5620a; }
+.status-label.status-naranjo { color: #fff; }
+.status-gris.status-dot, .status-gris.status-label { background: #6b7280; }
+.status-label.status-gris { color: #fff; }
+.status-rojo.status-dot, .status-rojo.status-label { background: var(--error); }
+.status-label.status-rojo { color: #fff; }

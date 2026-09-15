@@ -53,7 +53,8 @@ module.exports = async function (context, req) {
       clienteNombre: clienteNombre || '',
       modalidad: fields.Modalidad,
       servicios,
-      horaCierre: fields.HoraCierre || '18:00'
+      horaCierre: fields.HoraCierre || '18:00',
+      requierePin: Boolean(fields.PinHash && fields.PinSalt)
     });
   } catch (error) {
     context.log.error('Error inesperado en channel/resolve', error);

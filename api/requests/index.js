@@ -1,4 +1,4 @@
-const { hashToken } = require('../shared/hash');
+const { hashToken, verifySession } = require('../shared/hash');
 const { isWithinDeadline, chileWallClock } = require('../shared/time');
 const { authorizedServices } = require('../shared/serviceCatalog');
 const { sendJson } = require('../shared/respond');
@@ -99,6 +99,18 @@ module.exports = async function (context, req) {
       await logRejectedAttempt(channel.id, fields.Codigo, fields.Estado !== 'Activo' ? 'Canal inactivo' : 'Canal expirado');
       sendJson(context, 200, GENERIC_INVALID);
       return;
+    }
+
+    // Si el canal tiene PIN configurado, el portal exige una sesion valida para esta MISMA
+    // canal antes de aceptar cualquier solicitud — no solo para ver "Mis solicitudes".
+    if (fields.PinHash && fields.PinSalt) {
+      const sessionToken = typeof body.sessionToken === 'string' ? body.sessionToken.trim() : '';
+      const sessionCanalId = sessionToken ? verifySession(sessionToken) : null;
+      if (sessionCanalId === null || sessionCanalId !== Number(channel.id)) {
+        await logRejectedAttempt(channel.id, fields.Codigo, 'Sesión inválida o expirada');
+        sendJson(context, 200, { ok: false, message: 'Tu sesión expiró. Ingresa el PIN de nuevo.' });
+        return;
+      }
     }
 
     const attemptCount = await countRecentAttempts(channel.id, fields.Codigo, RATE_LIMIT_WINDOW_MINUTES);
