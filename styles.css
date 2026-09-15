@@ -39,14 +39,28 @@ body {
 .brand-header {
   background: linear-gradient(135deg, var(--accent), var(--accent-dark));
   color: #fff;
-  padding: 20px 24px;
+  padding: 18px 24px;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
+  flex-wrap: wrap;
 }
-.brand-logo { width: 56px; height: auto; border-radius: 8px; background: #fff; padding: 4px; flex-shrink: 0; }
-.brand-header h1 { color: #fff; font-size: 1.15rem; margin: 0; }
+.brand-logo {
+  width: 140px;
+  max-width: 40vw;
+  height: auto;
+  border-radius: 6px;
+  background: #fff;
+  padding: 6px 10px;
+  flex-shrink: 0;
+}
+.brand-header h1 { color: #fff; font-size: 1.1rem; margin: 0; }
 .brand-header .modalidad { margin: 2px 0 0; font-size: 0.85rem; opacity: 0.9; }
+
+@media (max-width: 380px) {
+  .brand-logo { width: 110px; }
+  .brand-header h1 { font-size: 1rem; }
+}
 
 .form-body { padding: 20px 24px 0; }
 

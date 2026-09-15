@@ -4,19 +4,7 @@
   var app = document.getElementById('app');
   var submissionId = null;
 
-  /**
-   * Emblema simple (SVG) en vez del logo real, que es una foto/PNG del ERP: transferir
-   * ese binario a este archivo de forma exacta no fue posible (se corrompía) — un SVG
-   * hecho de texto/formas se reproduce siempre igual porque no es un blob opaco.
-   */
-  var LOGO_SVG = '<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
-    '<rect x="0" y="0" width="48" height="48" rx="8" fill="#ffffff"/>' +
-    '<g transform="translate(24,24)">' +
-    '<path d="M0,-16 L11,-4 L0,0 L-11,-4 Z" fill="#8a4b2e"/>' +
-    '<path d="M16,0 L4,11 L0,0 L4,-11 Z" fill="#c96a2e"/>' +
-    '<path d="M0,16 L-11,4 L0,0 L11,4 Z" fill="#1d4d6b"/>' +
-    '<path d="M-16,0 L-4,-11 L0,0 L-4,11 Z" fill="#5a6b2e"/>' +
-    '</g></svg>';
+  // Logo oficial: archivo estático propio (assets/logo-inka-coya.png), no incrustado.
 
   /**
    * El token viaja en el fragmento (#/c/<token>) para que nunca llegue al servidor
@@ -68,12 +56,11 @@
     app.innerHTML = '';
 
     var header = el('header', { class: 'brand-header' });
-    var logoWrap = el('div', { class: 'brand-logo' });
-    logoWrap.innerHTML = LOGO_SVG;
+    var logo = el('img', { class: 'brand-logo', src: 'assets/logo-inka-coya.png', alt: 'Inka Coya Hotelería' });
     var titleBlock = el('div', {});
     titleBlock.appendChild(el('h1', { text: 'Solicitud diaria · ' + (data.clienteNombre || '') }));
     if (data.modalidad) titleBlock.appendChild(el('p', { class: 'modalidad', text: data.modalidad }));
-    header.appendChild(logoWrap);
+    header.appendChild(logo);
     header.appendChild(titleBlock);
     app.appendChild(header);
 
