@@ -6,7 +6,10 @@ const LISTS = {
   contracts: 'ICH_CONTRATOS',
   contractRates: 'ICH_CONTRATOS_TARIFAS',
   serviceRequests: 'ICH_SOLICITUDES_SERVICIO',
-  rejectedAttempts: 'ICH_SOLICITUDES_RECHAZADAS'
+  rejectedAttempts: 'ICH_SOLICITUDES_RECHAZADAS',
+  incidentChannels: 'ICH_CANALES_INCIDENCIAS',
+  establishments: 'ICH_ESTABLECIMIENTOS',
+  workOrders: 'ICH_INCIDENCIAS'
 };
 
 async function listActiveChannels() {
@@ -137,6 +140,38 @@ async function countRecentAttempts(canalId, codigoCanal, minutesWindow) {
   return recent(accepted).length + recent(rejected).length;
 }
 
+/** Canal de incidencias por establecimiento — mismo patrón que findChannelByTokenHash, lista separada. */
+async function findIncidentChannelByTokenHash(tokenHash) {
+  const items = await getListItems(LISTS.incidentChannels, `filter=fields/TokenHash eq '${tokenHash}'&top=1`);
+  return items[0];
+}
+
+async function getEstablishmentName(establecimientoId) {
+  const item = await getListItemById(LISTS.establishments, establecimientoId);
+  return item && item.fields.Title;
+}
+
+function createIncidentReport(fields) {
+  return createListItem(LISTS.workOrders, fields);
+}
+
+/** Igual que countRecentAttempts pero contra ICH_INCIDENCIAS en vez de ICH_SOLICITUDES_SERVICIO — mismo CanalId/CodigoCanal, misma lista de rechazados compartida. */
+async function countRecentIncidentAttempts(canalId, codigoCanal, minutesWindow) {
+  const sinceMs = Date.now() - minutesWindow * 60 * 1000;
+  const [accepted, rejected] = await Promise.all([
+    getListItems(LISTS.workOrders, `filter=fields/CodigoCanal eq '${codigoCanal}'&top=200`),
+    getListItems(LISTS.rejectedAttempts, `filter=fields/CanalId eq ${canalId}&top=200`)
+  ]);
+  // Si no viene Created/FechaRecepcion en la respuesta de Graph, se cuenta como reciente
+  // (conservador para un límite de intentos: mejor sobre-contar que dejar pasar un abuso).
+  const recent = (items) => items.filter((item) => {
+    const stamp = item.fields.FechaRecepcion || item.fields.Created;
+    const ms = stamp ? new Date(stamp).getTime() : NaN;
+    return Number.isNaN(ms) || ms >= sinceMs;
+  });
+  return recent(accepted).length + recent(rejected).length;
+}
+
 module.exports = {
   findChannelByTokenHash,
   getChannelById,
@@ -154,5 +189,9 @@ module.exports = {
   listActiveChannels,
   getContract,
   getLastOfficialQuantityBefore,
-  hasOfficialRequestForDate
+  hasOfficialRequestForDate,
+  findIncidentChannelByTokenHash,
+  getEstablishmentName,
+  createIncidentReport,
+  countRecentIncidentAttempts
 };

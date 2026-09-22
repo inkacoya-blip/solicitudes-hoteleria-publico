@@ -135,4 +135,29 @@ async function updateListItem(listDisplayName, itemId, fields) {
   }
 }
 
-module.exports = { getSiteId, getListId, getListItems, getListItemById, createListItem, updateListItem };
+/**
+ * Sube un archivo pequeño a la biblioteca de documentos por defecto del sitio, por ruta
+ * (Graph crea las carpetas intermedias solas). Pensado para fotos ya redimensionadas en
+ * el navegador (unos cientos de KB) — no usa sesión de carga reanudable, solo sirve para
+ * archivos bajo el límite de 4 MB de la carga directa de Graph.
+ */
+async function uploadFileToDrive(path, buffer, contentType) {
+  const siteId = await getSiteId();
+  const token = await getAppOnlyToken();
+  const response = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root:/${path}:/content`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': contentType || 'application/octet-stream'
+    },
+    body: buffer
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Subida de ${path} falló (${response.status}): ${detail}`);
+  }
+  const driveItem = await response.json();
+  return driveItem.webUrl;
+}
+
+module.exports = { getSiteId, getListId, getListItems, getListItemById, createListItem, updateListItem, uploadFileToDrive };
