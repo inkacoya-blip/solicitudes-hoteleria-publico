@@ -97,6 +97,32 @@ textarea { min-height: 70px; resize: vertical; }
 
 .honeypot { position: absolute; left: -9999px; top: -9999px; }
 
+/* Colación: varios bloques por horario en vez de una sola cantidad */
+.colacion-group {
+  margin-top: 14px;
+  padding: 12px 12px 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fafbfc;
+}
+.colacion-title { margin: 0 0 8px; font-size: 0.9rem; font-weight: 600; }
+.colacion-blocks { display: flex; flex-direction: column; gap: 8px; }
+.colacion-block {
+  display: grid;
+  grid-template-columns: 90px 70px 1fr;
+  gap: 6px;
+}
+.colacion-block input { margin: 0; }
+.colacion-hora, .colacion-cantidad, .colacion-obs { padding: 8px 8px; font-size: 0.92rem; }
+.colacion-add { margin: 10px 0 4px; width: auto; padding: 8px 14px; font-size: 0.85rem; }
+
+@media (max-width: 380px) {
+  .colacion-block { grid-template-columns: 1fr 1fr; grid-template-areas: "hora cantidad" "obs obs"; }
+  .colacion-hora { grid-area: hora; }
+  .colacion-cantidad { grid-area: cantidad; }
+  .colacion-obs { grid-area: obs; }
+}
+
 .radio-row { display: flex; gap: 16px; font-weight: normal; align-items: center; }
 .radio-row label { margin: 0; font-weight: normal; display: flex; align-items: center; gap: 6px; }
 

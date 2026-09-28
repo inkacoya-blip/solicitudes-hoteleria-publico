@@ -37,6 +37,14 @@ function authorizedServices(modalidad, activeContractServiceTypes, exceptionsJso
   return Array.from(new Set([...fromRates, ...exceptions]));
 }
 
+/**
+ * Solo las variantes de Colación se reparten en varios bloques por horario (mínimo 4,
+ * depende del día) — el resto de los servicios sigue siendo un solo bloque por día.
+ */
+function isColacion(tipoServicio) {
+  return typeof tipoServicio === 'string' && tipoServicio.indexOf('Colación') === 0;
+}
+
 const WEEK_DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
 /** Mismo formato que ExcepcionesServicios: JSON de días en texto — mirror de parseDiasServicio en utils.ts del ERP. Vacío/sin definir = todos los días. */
@@ -54,4 +62,4 @@ function operatesOnWeekday(diasServicioJson, fechaIso) {
   return dias.includes(byIndex[weekdayIndex]);
 }
 
-module.exports = { questionSetFor, authorizedServices, parseDiasServicio, operatesOnWeekday };
+module.exports = { questionSetFor, authorizedServices, parseDiasServicio, operatesOnWeekday, isColacion };

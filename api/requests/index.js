@@ -1,6 +1,6 @@
 const { hashToken, verifySession } = require('../shared/hash');
 const { isWithinDeadline, chileWallClock } = require('../shared/time');
-const { authorizedServices } = require('../shared/serviceCatalog');
+const { authorizedServices, isColacion } = require('../shared/serviceCatalog');
 const { sendJson } = require('../shared/respond');
 const {
   findChannelByTokenHash,
@@ -123,10 +123,15 @@ module.exports = async function (context, req) {
     const activeServiceTypes = await getActiveContractServiceTypes(fields.ContratoId);
     const permitted = authorizedServices(fields.Modalidad, activeServiceTypes, fields.ExcepcionesServicios);
 
+    const HORARIO_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
     const cleanServices = [];
     for (const item of servicios) {
       const tipoServicio = item && item.tipoServicio;
       const cantidad = Number(item && item.cantidad);
+      // Horario/observación solo tienen sentido para Colación (varios bloques del mismo día) —
+      // para el resto de los servicios se ignoran aunque lleguen, sin romper nada.
+      const horarioRaw = isColacion(tipoServicio) && typeof (item && item.horario) === 'string' ? item.horario.trim() : '';
+      const observacionRaw = isColacion(tipoServicio) && typeof (item && item.observacion) === 'string' ? item.observacion.trim().slice(0, 500) : '';
       if (!permitted.includes(tipoServicio)) {
         await logRejectedAttempt(channel.id, fields.Codigo, 'Servicio no autorizado');
         sendJson(context, 200, GENERIC_INVALID);
@@ -137,7 +142,19 @@ module.exports = async function (context, req) {
         sendJson(context, 200, GENERIC_INVALID);
         return;
       }
-      if (cantidad > 0) cleanServices.push({ tipoServicio, cantidad });
+      if (horarioRaw && !HORARIO_PATTERN.test(horarioRaw)) {
+        await logRejectedAttempt(channel.id, fields.Codigo, 'Validación de datos inválida');
+        sendJson(context, 200, GENERIC_INVALID);
+        return;
+      }
+      if (cantidad > 0) {
+        cleanServices.push({
+          tipoServicio,
+          cantidad,
+          horario: horarioRaw || undefined,
+          observacion: observacionRaw || undefined
+        });
+      }
     }
     if (cleanServices.length === 0) {
       await logRejectedAttempt(channel.id, fields.Codigo, 'Validación de datos inválida');
@@ -154,8 +171,11 @@ module.exports = async function (context, req) {
     const contratoServicio = (contract && contract.fields.ContratoServicio) || (await getContractServiceLabel(fields.ContratoId)) || '';
     const fechaRecepcionIso = now.toISOString();
 
-    for (const { tipoServicio, cantidad } of cleanServices) {
-      const claveFila = `${channel.id}|${submissionId}|${fechaServicio}|${tipoServicio}`;
+    for (const { tipoServicio, cantidad, horario, observacion } of cleanServices) {
+      // El horario entra en la clave: para Colación, varios bloques del mismo día+servicio no
+      // se reemplazan entre sí, cada uno es su propia fila. Para el resto (horario vacío), la
+      // clave queda exactamente igual que antes.
+      const claveFila = `${channel.id}|${submissionId}|${fechaServicio}|${tipoServicio}|${horario || ''}`;
       // Chequeo antes de escribir: evita una llamada innecesaria en el caso normal. La
       // garantía real contra duplicados es la columna ClaveFila con EnforceUniqueValues
       // en SharePoint — si dos envíos llegan casi juntos, SharePoint rechaza el segundo.
@@ -163,8 +183,9 @@ module.exports = async function (context, req) {
       if (existing) continue;
 
       // Un reemplazo nunca sobrescribe: solo se vincula al registro anterior para reconstruir el historial.
+      // Para Colación, el reemplazo es por horario — reemplaza SU bloque, no los demás del día.
       const previous = tipoSolicitud === 'Reemplazo'
-        ? await findLatestRequestForReplacement(fields.ContratoId, tipoServicio, fechaServicio)
+        ? await findLatestRequestForReplacement(fields.ContratoId, tipoServicio, fechaServicio, horario)
         : undefined;
 
       try {
@@ -175,12 +196,14 @@ module.exports = async function (context, req) {
           ContratoServicio: contratoServicio,
           FechaServicio: fechaServicio,
           TipoServicio: tipoServicio,
+          HoraServicio: horario,
           CantidadOficial: cantidad,
           OrigenSolicitud: 'Cliente',
           EstadoSolicitud: estadoSolicitud,
           PrecioUnitario: 0,
           SolicitanteNombre: solicitanteNombre,
           SolicitanteCorreo: solicitanteCorreo,
+          Observacion: observacion,
           FechaRecepcion: fechaRecepcionIso,
           VersionSolicitud: 1,
           CanalIngreso: 'Formulario externo',

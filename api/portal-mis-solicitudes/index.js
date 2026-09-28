@@ -65,6 +65,8 @@ module.exports = async function (context, req) {
         id: item.id,
         fecha: (item.fields.FechaServicio || '').slice(0, 10),
         tipoServicio: item.fields.TipoServicio,
+        horario: item.fields.HoraServicio || undefined,
+        observacion: item.fields.Observacion || undefined,
         cantidad: item.fields.CantidadOficial,
         remitente: item.fields.SolicitanteNombre || '',
         horaEnvio: item.fields.FechaRecepcion || '',

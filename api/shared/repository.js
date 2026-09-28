@@ -41,6 +41,33 @@ async function hasOfficialRequestForDate(contratoId, tipoServicio, fechaIso) {
   return items.some((item) => (item.fields.FechaServicio || '').slice(0, 10) === fechaIso);
 }
 
+/** Solo Colación: si ESE horario específico ya tiene una solicitud oficial para esa fecha —
+ * el resto de los horarios del mismo día puede seguir faltando y arrastrarse aparte. */
+async function hasOfficialRequestForDateAndHorario(contratoId, tipoServicio, horario, fechaIso) {
+  const items = await getListItems(
+    LISTS.serviceRequests,
+    `filter=fields/ContratoId eq ${contratoId} and fields/TipoServicio eq '${tipoServicio}' and fields/EstadoSolicitud eq 'Oficial'&top=500`
+  );
+  return items.some((item) => (item.fields.FechaServicio || '').slice(0, 10) === fechaIso
+    && (item.fields.HoraServicio || '') === (horario || ''));
+}
+
+/** Solo Colación: todos los bloques 'Oficial' (uno por horario) del día válido anterior más
+ * reciente antes de beforeDateIso — nunca mezcla bloques de días distintos entre sí. */
+async function getLastOfficialColacionBlocksBefore(contratoId, tipoServicio, beforeDateIso) {
+  const items = await getListItems(
+    LISTS.serviceRequests,
+    `filter=fields/ContratoId eq ${contratoId} and fields/TipoServicio eq '${tipoServicio}' and fields/EstadoSolicitud eq 'Oficial'&top=500`
+  );
+  const prior = items.filter((item) => (item.fields.FechaServicio || '').slice(0, 10) < beforeDateIso);
+  if (prior.length === 0) return [];
+  const latestDate = prior.reduce((max, item) => {
+    const date = (item.fields.FechaServicio || '').slice(0, 10);
+    return date > max ? date : max;
+  }, '');
+  return prior.filter((item) => (item.fields.FechaServicio || '').slice(0, 10) === latestDate);
+}
+
 async function getContractServiceLabel(contratoId) {
   const item = await getListItemById(LISTS.contracts, contratoId);
   return item && item.fields.ContratoServicio;
@@ -95,16 +122,20 @@ async function findByClaveFila(claveFila) {
 
 /**
  * Para un reemplazo: la solicitud más reciente (cualquier estado salvo Anulada) para esa
- * fecha/servicio del contrato — a la que ReemplazaSolicitudId debe apuntar. Nunca se edita
- * ni se borra; solo se usa para enlazar el historial.
+ * fecha/servicio(/horario) del contrato — a la que ReemplazaSolicitudId debe apuntar. Nunca se
+ * edita ni se borra; solo se usa para enlazar el historial.
+ *
+ * horario: solo relevante para Colación — sin esto, un reemplazo de UN bloque horario
+ * encontraría (y "reemplazaría" en el historial) cualquier bloque del día, no el suyo.
  */
-async function findLatestRequestForReplacement(contratoId, tipoServicio, fechaServicio) {
+async function findLatestRequestForReplacement(contratoId, tipoServicio, fechaServicio, horario) {
   const items = await getListItems(
     LISTS.serviceRequests,
     `filter=fields/ContratoId eq ${contratoId} and fields/TipoServicio eq '${tipoServicio}'&top=500`
   );
   const candidates = items.filter((item) => (item.fields.FechaServicio || '').slice(0, 10) === fechaServicio
-    && item.fields.EstadoSolicitud !== 'Anulada');
+    && item.fields.EstadoSolicitud !== 'Anulada'
+    && (item.fields.HoraServicio || '') === (horario || ''));
   candidates.sort((a, b) => (b.fields.FechaRecepcion || '').localeCompare(a.fields.FechaRecepcion || ''));
   return candidates[0];
 }
@@ -190,6 +221,8 @@ module.exports = {
   getContract,
   getLastOfficialQuantityBefore,
   hasOfficialRequestForDate,
+  hasOfficialRequestForDateAndHorario,
+  getLastOfficialColacionBlocksBefore,
   findIncidentChannelByTokenHash,
   getEstablishmentName,
   createIncidentReport,

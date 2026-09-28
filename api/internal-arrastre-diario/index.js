@@ -1,12 +1,14 @@
 const { chileTomorrow } = require('../shared/time');
-const { authorizedServices, operatesOnWeekday } = require('../shared/serviceCatalog');
+const { authorizedServices, operatesOnWeekday, isColacion } = require('../shared/serviceCatalog');
 const { sendJson } = require('../shared/respond');
 const {
   listActiveChannels,
   getContract,
   getActiveContractServiceTypes,
   hasOfficialRequestForDate,
+  hasOfficialRequestForDateAndHorario,
   getLastOfficialQuantityBefore,
+  getLastOfficialColacionBlocksBefore,
   createServiceRequest
 } = require('../shared/repository');
 
@@ -58,6 +60,60 @@ module.exports = async function (context, req) {
       const servicios = authorizedServices(fields.Modalidad, activeServiceTypes, fields.ExcepcionesServicios);
 
       for (const servicio of servicios) {
+        // Colación se arrastra por bloque horario — el resto de los servicios sigue igual
+        // que siempre (un solo bloque por día).
+        if (isColacion(servicio)) {
+          const priorBlocks = await getLastOfficialColacionBlocksBefore(fields.ContratoId, servicio, manana);
+          if (priorBlocks.length === 0) {
+            alertas.push({
+              contratoId: fields.ContratoId,
+              contratoServicio: contract.fields.ContratoServicio,
+              tipoServicio: servicio,
+              motivo: 'Sin ningun dia anterior con solicitud oficial valida.'
+            });
+            continue;
+          }
+
+          for (const block of priorBlocks) {
+            const horario = block.fields.HoraServicio || undefined;
+            const yaExisteBloque = await hasOfficialRequestForDateAndHorario(fields.ContratoId, servicio, horario, manana);
+            if (yaExisteBloque) continue;
+
+            const claveFila = `arrastre|${channel.id}|${manana}|${servicio}|${horario || ''}`;
+            try {
+              await createServiceRequest({
+                Title: claveFila,
+                ClienteId: fields.ClienteId,
+                ContratoId: fields.ContratoId,
+                ContratoServicio: contract.fields.ContratoServicio,
+                FechaServicio: manana,
+                TipoServicio: servicio,
+                HoraServicio: horario,
+                CantidadOficial: block.fields.CantidadOficial,
+                OrigenSolicitud: 'Proyección automática',
+                EstadoSolicitud: 'Arrastre automático',
+                PrecioUnitario: 0,
+                FechaRecepcion: now.toISOString(),
+                VersionSolicitud: 1,
+                CanalIngreso: 'Proyección automática',
+                CodigoCanal: fields.Codigo,
+                ClaveFila: claveFila
+              });
+              arrastrados.push({ contratoId: fields.ContratoId, tipoServicio: servicio, horario, cantidad: block.fields.CantidadOficial });
+            } catch (error) {
+              if (isDuplicateValueError(error)) continue; // ya se habia arrastrado (reintento del flujo)
+              context.log.error(`Error creando arrastre para contrato ${fields.ContratoId}/${servicio}/${horario}`, error);
+              alertas.push({
+                contratoId: fields.ContratoId,
+                contratoServicio: contract.fields.ContratoServicio,
+                tipoServicio: servicio,
+                motivo: `Error al crear el bloque ${horario || 'sin horario'} — revisar manualmente.`
+              });
+            }
+          }
+          continue;
+        }
+
         const yaExiste = await hasOfficialRequestForDate(fields.ContratoId, servicio, manana);
         if (yaExiste) continue;
 

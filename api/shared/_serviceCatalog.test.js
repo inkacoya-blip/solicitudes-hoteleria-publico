@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { authorizedServices } = require('./serviceCatalog');
+const { authorizedServices, isColacion } = require('./serviceCatalog');
 
 // El contrato tiene tarifas activas para Almuerzo y Cena, pero la modalidad es
 // "Almuerzo a terreno" — Cena no debe aparecer aunque esté en el contrato, porque
@@ -21,5 +21,11 @@ assert.deepStrictEqual(
 
 // Colación a terreno: reservada, nunca debe autorizar nada.
 assert.deepStrictEqual(authorizedServices('Colación a terreno', ['Colación']), []);
+
+// Solo las variantes de Colación se reparten en bloques por horario.
+assert.strictEqual(isColacion('Colación'), true);
+assert.strictEqual(isColacion('Colación desayuno reforzado'), true);
+assert.strictEqual(isColacion('Almuerzo'), false);
+assert.strictEqual(isColacion('Desayuno reforzado'), false);
 
 console.log('Todas las pruebas de servicios autorizados pasaron.');

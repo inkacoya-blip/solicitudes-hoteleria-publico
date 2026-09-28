@@ -74,6 +74,14 @@
     return d.toISOString().slice(0, 10);
   }
 
+  // Mismo criterio que api/shared/serviceCatalog.js#isColacion — duplicado a propósito: este
+  // archivo corre en el navegador, sin acceso a los módulos de la API.
+  function isColacion(tipoServicio) {
+    return typeof tipoServicio === 'string' && tipoServicio.indexOf('Colación') === 0;
+  }
+
+  var MIN_COLACION_BLOQUES = 4;
+
   function renderHeader(container, data) {
     var header = el('header', { class: 'brand-header' });
     var logo = el('img', { class: 'brand-logo', src: 'assets/logo-inka-coya.png', alt: 'Inka Coya Hotelería' });
@@ -236,13 +244,55 @@
       else motivo.removeAttribute('required');
     });
 
+    // Colación llega repartida en varios bloques por horario (ver renderColacionBlocks) — el
+    // resto de los servicios sigue siendo una sola cantidad por día, como siempre.
+    function renderColacionBlocks(servicio) {
+      var wrap = el('div', { class: 'colacion-group' });
+      wrap.appendChild(el('p', { class: 'colacion-title', text: servicio }));
+      var blocksContainer = el('div', { class: 'colacion-blocks' });
+      wrap.appendChild(blocksContainer);
+      var blocks = [];
+
+      function addBlock(prefillBlock) {
+        var row = el('div', { class: 'colacion-block' });
+        var horaInput = el('input', { type: 'time', class: 'colacion-hora', 'aria-label': 'Hora — ' + servicio });
+        var cantidadInput = el('input', { type: 'number', min: '0', step: '1', class: 'colacion-cantidad', 'aria-label': 'Cantidad — ' + servicio, value: '0' });
+        var obsInput = el('input', { type: 'text', class: 'colacion-obs', 'aria-label': 'Observación — ' + servicio, placeholder: 'Observación (opcional)' });
+        if (prefillBlock) {
+          if (prefillBlock.horario) horaInput.value = prefillBlock.horario;
+          if (prefillBlock.cantidad) cantidadInput.value = String(prefillBlock.cantidad);
+          if (prefillBlock.observacion) obsInput.value = prefillBlock.observacion;
+        }
+        row.appendChild(horaInput);
+        row.appendChild(cantidadInput);
+        row.appendChild(obsInput);
+        blocksContainer.appendChild(row);
+        blocks.push({ hora: horaInput, cantidad: cantidadInput, observacion: obsInput });
+      }
+
+      var prefillBlocks = (prefill && prefill.servicios && prefill.servicios[servicio]) || [];
+      var initialCount = Math.max(MIN_COLACION_BLOQUES, prefillBlocks.length);
+      for (var i = 0; i < initialCount; i += 1) addBlock(prefillBlocks[i]);
+
+      var addButton = el('button', { type: 'button', class: 'secondary-button colacion-add', text: '+ Agregar horario' });
+      addButton.addEventListener('click', function () { addBlock(); });
+      wrap.appendChild(addButton);
+
+      form.appendChild(wrap);
+      return blocks;
+    }
+
     var serviceInputs = {};
+    var colacionBlocksByServicio = {};
     (data.servicios || []).forEach(function (servicio) {
+      if (isColacion(servicio)) {
+        colacionBlocksByServicio[servicio] = renderColacionBlocks(servicio);
+        return;
+      }
       var id = 'servicio-' + servicio.replace(/\s+/g, '-');
       var label = el('label', { text: servicio, for: id });
-      var precargada = prefill && prefill.servicios && Object.prototype.hasOwnProperty.call(prefill.servicios, servicio)
-        ? String(prefill.servicios[servicio])
-        : '0';
+      var prefillEntry = prefill && prefill.servicios && prefill.servicios[servicio] && prefill.servicios[servicio][0];
+      var precargada = prefillEntry ? String(prefillEntry.cantidad) : '0';
       var input = el('input', { type: 'number', min: '0', step: '1', id: id, name: id, value: precargada });
       serviceInputs[servicio] = input;
       form.appendChild(label);
@@ -276,6 +326,27 @@
       var servicios = Object.keys(serviceInputs)
         .map(function (name) { return { tipoServicio: name, cantidad: Number(serviceInputs[name].value || 0) }; })
         .filter(function (item) { return item.cantidad > 0; });
+
+      var colacionSinHora = null;
+      Object.keys(colacionBlocksByServicio).forEach(function (servicio) {
+        colacionBlocksByServicio[servicio].forEach(function (block) {
+          var cantidad = Number(block.cantidad.value || 0);
+          if (cantidad <= 0) return;
+          var horario = block.hora.value.trim();
+          if (!horario) { colacionSinHora = servicio; return; }
+          servicios.push({
+            tipoServicio: servicio,
+            cantidad: cantidad,
+            horario: horario,
+            observacion: block.observacion.value.trim() || undefined
+          });
+        });
+      });
+
+      if (colacionSinHora) {
+        renderMessage(messageBox, 'Indica la hora en cada bloque de ' + colacionSinHora + ' que tenga cantidad mayor a cero.', 'error');
+        return;
+      }
 
       if (servicios.length === 0) {
         renderMessage(messageBox, 'Ingresa al menos una cantidad mayor a cero.', 'error');
@@ -401,8 +472,9 @@
         grupo.forEach(function (s) {
           var meta = STATUS_META[s.estado] || { color: 'gris', label: s.estado };
           var row = el('div', { class: 'solicitud-row' });
+          var etiqueta = s.tipoServicio + (s.horario ? ' (' + s.horario + ')' : '') + ': ' + s.cantidad;
           row.appendChild(el('span', { class: 'status-dot status-' + meta.color }));
-          row.appendChild(el('strong', { text: s.tipoServicio + ': ' + s.cantidad }));
+          row.appendChild(el('strong', { text: etiqueta }));
           row.appendChild(el('span', { class: 'status-label status-' + meta.color, text: meta.label }));
           card.appendChild(row);
 
@@ -417,7 +489,8 @@
           if (meta.explicacion) card.appendChild(el('p', { class: 'solicitud-explicacion', text: meta.explicacion }));
 
           if (s.estado !== 'reemplazada' && s.estado !== 'no-aceptada') {
-            vigentesParaReemplazo[s.tipoServicio] = s.cantidad;
+            if (!vigentesParaReemplazo[s.tipoServicio]) vigentesParaReemplazo[s.tipoServicio] = [];
+            vigentesParaReemplazo[s.tipoServicio].push({ cantidad: s.cantidad, horario: s.horario, observacion: s.observacion });
           }
         });
 
