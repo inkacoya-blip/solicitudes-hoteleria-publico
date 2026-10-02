@@ -93,6 +93,12 @@ input[type="number"], input[type="date"], input[type="text"], input[type="email"
   font-size: 1rem;
 }
 
+.service-observation {
+  margin-top: 6px;
+  background: #fafbfc;
+  font-size: 0.92rem !important;
+}
+
 textarea { min-height: 70px; resize: vertical; }
 
 .honeypot { position: absolute; left: -9999px; top: -9999px; }
@@ -150,6 +156,30 @@ button:hover:not(:disabled) { background: var(--accent-dark); }
 .message.error { background: #fdecea; color: var(--error); }
 .message.success { background: #e8f5ec; color: var(--success); }
 
+.submission-receipt {
+  margin: 28px 24px 8px;
+  padding: 24px 20px;
+  border: 2px solid #87c69d;
+  border-radius: 12px;
+  background: #eef9f1;
+  text-align: center;
+}
+.submission-receipt-icon {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 12px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--success);
+  color: #fff;
+  font-size: 1.8rem;
+  font-weight: 800;
+}
+.submission-receipt h2 { margin: 0 0 8px; color: var(--success); font-size: 1.25rem; }
+.submission-receipt .subtitle { margin-bottom: 10px; color: var(--text); }
+.submission-receipt-summary { margin: 0; color: var(--muted); font-size: 0.9rem; }
+
 /* Pestañas del portal */
 .portal-tabs { display: flex; margin: 0 24px; border-bottom: 1px solid var(--border); gap: 4px; }
 .portal-tab {
@@ -172,6 +202,14 @@ button:hover:not(:disabled) { background: var(--accent-dark); }
   border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px;
 }
 .solicitud-card h3 { margin: 0 0 8px; font-size: 0.95rem; color: var(--accent-dark); }
+.portal-table-wrap { overflow-x: auto; margin-top: 8px; }
+.portal-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+.portal-table th { text-align: left; padding: 8px; background: #eef4f7; color: var(--accent-dark); white-space: nowrap; }
+.portal-table td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.portal-table td:nth-child(2) { text-align: center; font-weight: 700; }
+.portal-table .status-label { display: inline-block; white-space: nowrap; }
+.solicitud-history { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+.solicitud-history summary { cursor: pointer; color: var(--muted); font-size: 0.84rem; font-weight: 600; }
 .solicitud-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; flex-wrap: wrap; }
 .solicitud-row strong { font-weight: 600; font-size: 0.92rem; }
 .solicitud-detalle { margin: 2px 0 0; font-size: 0.8rem; color: var(--muted); }

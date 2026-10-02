@@ -7,14 +7,14 @@
   // Logo oficial: archivo estático propio (assets/logo-inka-coya.png), no incrustado.
 
   var STATUS_META = {
-    'oficial-cliente': { color: 'verde', label: 'Oficial (enviada por ti)' },
+    'oficial-cliente': { color: 'verde', label: 'Oficial' },
     'oficial-automatica': {
       color: 'azul',
-      label: 'Oficial (proyección automática)',
+      label: 'Automática · no hubo solicitud',
       explicacion: 'No se recibió una nueva solicitud dentro del plazo, así que se mantuvo la última cantidad oficial. Esta cantidad será considerada para producción y EDP.'
     },
-    'extraordinaria-pendiente': { color: 'naranjo', label: 'Extraordinaria pendiente' },
-    'reemplazada': { color: 'gris', label: 'Reemplazada' },
+    'extraordinaria-pendiente': { color: 'naranjo', label: 'Pendiente de aprobación' },
+    'reemplazada': { color: 'gris', label: 'Historial · reemplazada' },
     'no-aceptada': { color: 'rojo', label: 'No aceptada' }
   };
 
@@ -294,17 +294,27 @@
       var prefillEntry = prefill && prefill.servicios && prefill.servicios[servicio] && prefill.servicios[servicio][0];
       var precargada = prefillEntry ? String(prefillEntry.cantidad) : '0';
       var input = el('input', { type: 'number', min: '0', step: '1', id: id, name: id, value: precargada });
-      serviceInputs[servicio] = input;
+      var obsInput = el('input', {
+        type: 'text',
+        class: 'service-observation',
+        'aria-label': 'Observación — ' + servicio,
+        placeholder: 'Observación para ' + servicio + ' (opcional)'
+      });
+      if (prefillEntry && prefillEntry.observacion) obsInput.value = prefillEntry.observacion;
+      serviceInputs[servicio] = { cantidad: input, observacion: obsInput };
       form.appendChild(label);
       form.appendChild(input);
+      form.appendChild(obsInput);
     });
 
     form.appendChild(el('label', { text: 'Nombre de quien solicita', for: 'nombre' }));
     var nombre = el('input', { type: 'text', id: 'nombre', name: 'nombre', required: 'required' });
+    if (prefill && prefill.solicitanteNombre) nombre.value = prefill.solicitanteNombre;
     form.appendChild(nombre);
 
     form.appendChild(el('label', { text: 'Correo de quien solicita', for: 'correo' }));
     var correo = el('input', { type: 'email', id: 'correo', name: 'correo', required: 'required' });
+    if (prefill && prefill.solicitanteCorreo) correo.value = prefill.solicitanteCorreo;
     form.appendChild(correo);
 
     // Honeypot: un visitante real nunca ve ni llena este campo.
@@ -324,7 +334,13 @@
     form.addEventListener('submit', function (event) {
       event.preventDefault();
       var servicios = Object.keys(serviceInputs)
-        .map(function (name) { return { tipoServicio: name, cantidad: Number(serviceInputs[name].value || 0) }; })
+        .map(function (name) {
+          return {
+            tipoServicio: name,
+            cantidad: Number(serviceInputs[name].cantidad.value || 0),
+            observacion: serviceInputs[name].observacion.value.trim() || undefined
+          };
+        })
         .filter(function (item) { return item.cantidad > 0; });
 
       var colacionSinHora = null;
@@ -388,9 +404,45 @@
           submit.disabled = false;
           submit.textContent = 'Enviar solicitud';
           if (result && result.ok) {
-            renderMessage(messageBox, result.message || 'Solicitud registrada.', 'success');
-            // Una solicitud nueva (no un reintento) usa un SubmissionId nuevo.
-            submissionId = crypto.randomUUID();
+            var sentServices = {};
+            servicios.forEach(function (item) {
+              if (!sentServices[item.tipoServicio]) sentServices[item.tipoServicio] = [];
+              sentServices[item.tipoServicio].push({
+                cantidad: item.cantidad,
+                horario: item.horario,
+                observacion: item.observacion
+              });
+            });
+            var receipt = el('section', { class: 'submission-receipt', role: 'status', 'aria-live': 'polite' });
+            receipt.appendChild(el('div', { class: 'submission-receipt-icon', text: '✓' }));
+            receipt.appendChild(el('h2', { text: 'Solicitud guardada correctamente' }));
+            receipt.appendChild(el('p', {
+              class: 'subtitle',
+              text: result.message || 'La solicitud quedó registrada en Inka Coya.'
+            }));
+            receipt.appendChild(el('p', {
+              class: 'submission-receipt-summary',
+              text: fecha.value + ' · ' + servicios.length + (servicios.length === 1 ? ' servicio enviado' : ' servicios enviados')
+            }));
+            var correct = el('button', { type: 'button', text: 'Corregir esta solicitud' });
+            correct.addEventListener('click', function () {
+              renderNuevaSolicitud(container, data, token, sessionToken, {
+                fecha: fecha.value,
+                tipoSolicitud: 'Reemplazo',
+                servicios: sentServices,
+                solicitanteNombre: nombre.value,
+                solicitanteCorreo: correo.value
+              });
+            });
+            receipt.appendChild(correct);
+            var another = el('button', { type: 'button', class: 'secondary-button', text: 'Enviar otra solicitud' });
+            another.addEventListener('click', function () {
+              renderNuevaSolicitud(container, data, token, sessionToken, null);
+            });
+            receipt.appendChild(another);
+            container.innerHTML = '';
+            container.appendChild(receipt);
+            receipt.scrollIntoView({ behavior: 'smooth', block: 'start' });
           } else if (result && /sesión/i.test(result.message || '')) {
             // La sesión expiró entre medio: se pide el PIN de nuevo, sin perder lo escrito.
             clearStoredSession(token);
@@ -466,33 +518,63 @@
       ordenFechas.forEach(function (fecha) {
         var grupo = porFecha[fecha];
         var card = el('div', { class: 'solicitud-card' });
-        card.appendChild(el('h3', { text: fecha }));
+        card.appendChild(el('h3', { text: 'Día ' + fecha }));
+
+        var vigentes = grupo.filter(function (s) { return s.estado !== 'reemplazada' && s.estado !== 'no-aceptada'; });
+        var historicas = grupo.filter(function (s) { return s.estado === 'reemplazada' || s.estado === 'no-aceptada'; });
+
+        function buildTable(rows) {
+          var wrap = el('div', { class: 'portal-table-wrap' });
+          var table = el('table', { class: 'portal-table' });
+          var thead = el('thead', {});
+          var header = el('tr', {});
+          ['Servicio', 'Cantidad oficial', 'Observación', 'Estado'].forEach(function (label) {
+            header.appendChild(el('th', { text: label }));
+          });
+          thead.appendChild(header);
+          table.appendChild(thead);
+          var tbody = el('tbody', {});
+          rows.forEach(function (s) {
+            var meta = STATUS_META[s.estado] || { color: 'gris', label: s.estado };
+            var row = el('tr', {});
+            row.appendChild(el('td', { text: s.tipoServicio + (s.horario ? ' · ' + s.horario : '') }));
+            row.appendChild(el('td', { text: String(s.cantidad) }));
+            row.appendChild(el('td', { text: s.observacion || '—' }));
+            var statusCell = el('td', {});
+            statusCell.appendChild(el('span', { class: 'status-label status-' + meta.color, text: meta.label }));
+            row.appendChild(statusCell);
+            tbody.appendChild(row);
+          });
+          table.appendChild(tbody);
+          wrap.appendChild(table);
+          return wrap;
+        }
+
+        if (vigentes.length > 0) card.appendChild(buildTable(vigentes));
 
         var vigentesParaReemplazo = {};
-        grupo.forEach(function (s) {
-          var meta = STATUS_META[s.estado] || { color: 'gris', label: s.estado };
-          var row = el('div', { class: 'solicitud-row' });
-          var etiqueta = s.tipoServicio + (s.horario ? ' (' + s.horario + ')' : '') + ': ' + s.cantidad;
-          row.appendChild(el('span', { class: 'status-dot status-' + meta.color }));
-          row.appendChild(el('strong', { text: etiqueta }));
-          row.appendChild(el('span', { class: 'status-label status-' + meta.color, text: meta.label }));
-          card.appendChild(row);
-
-          var detalle = el('p', { class: 'solicitud-detalle' });
-          var partes = [];
-          if (s.remitente) partes.push('Enviado por ' + s.remitente);
-          if (s.horaEnvio) partes.push(formatFechaHora(s.horaEnvio));
-          if (s.tipoSolicitud === 'Reemplazo') partes.push('Reemplazo' + (s.motivoReemplazo ? (': ' + s.motivoReemplazo) : ''));
-          detalle.textContent = partes.join(' · ');
-          card.appendChild(detalle);
-
-          if (meta.explicacion) card.appendChild(el('p', { class: 'solicitud-explicacion', text: meta.explicacion }));
-
+        vigentes.forEach(function (s) {
           if (s.estado !== 'reemplazada' && s.estado !== 'no-aceptada') {
             if (!vigentesParaReemplazo[s.tipoServicio]) vigentesParaReemplazo[s.tipoServicio] = [];
             vigentesParaReemplazo[s.tipoServicio].push({ cantidad: s.cantidad, horario: s.horario, observacion: s.observacion });
           }
         });
+
+        var newest = grupo[0];
+        if (newest) {
+          var parts = [];
+          if (newest.remitente) parts.push('Enviado por ' + newest.remitente);
+          if (newest.horaEnvio) parts.push(formatFechaHora(newest.horaEnvio));
+          if (newest.tipoSolicitud === 'Reemplazo' && newest.motivoReemplazo) parts.push('Motivo: ' + newest.motivoReemplazo);
+          if (parts.length > 0) card.appendChild(el('p', { class: 'solicitud-detalle', text: parts.join(' · ') }));
+        }
+
+        if (historicas.length > 0) {
+          var history = el('details', { class: 'solicitud-history' });
+          history.appendChild(el('summary', { text: 'Ver historial anterior (' + historicas.length + ')' }));
+          history.appendChild(buildTable(historicas));
+          card.appendChild(history);
+        }
 
         if (Object.keys(vigentesParaReemplazo).length > 0) {
           var btn = el('button', { type: 'button', class: 'secondary-button', text: 'Reemplazar solicitud' });
