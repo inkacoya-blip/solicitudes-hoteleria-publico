@@ -7,7 +7,7 @@
   },
   "main": "shared/*.js",
   "scripts": {
-    "test": "node shared/_time.test.js && node shared/_serviceCatalog.test.js && node shared/_hash.test.js && node shared/_requestStatus.test.js"
+    "test": "node shared/_time.test.js && node shared/_serviceCatalog.test.js && node shared/_hash.test.js && node shared/_requestStatus.test.js && node shared/_planCore.test.js && node shared/_plantilla.test.js && node shared/_requestsPlan.test.js"
   },
   "dependencies": {}
 }
