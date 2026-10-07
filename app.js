@@ -158,35 +158,22 @@
     var tabs = el('div', { class: 'portal-tabs' });
     var tabNueva = el('button', { type: 'button', class: 'portal-tab portal-tab-active', text: 'Nueva solicitud' });
     var tabMias = el('button', { type: 'button', class: 'portal-tab', text: 'Mis solicitudes' });
-    // La pestaña de Excel solo aparece si el servidor mandó los datos de la plantilla y el archivo cargó.
-    var conPlan = Boolean(data.codigoPlantilla) && Boolean(window.IchPlantilla);
-    var tabPlan = el('button', { type: 'button', class: 'portal-tab', text: 'Cargar plan (Excel)' });
     tabs.appendChild(tabNueva);
-    if (conPlan) tabs.appendChild(tabPlan);
     tabs.appendChild(tabMias);
     app.appendChild(tabs);
 
     var panelNueva = el('div', { class: 'portal-panel' });
-    var panelPlan = el('div', { class: 'portal-panel', hidden: 'hidden' });
     var panelMias = el('div', { class: 'portal-panel', hidden: 'hidden' });
     app.appendChild(panelNueva);
-    app.appendChild(panelPlan);
     app.appendChild(panelMias);
 
     var misSolicitudesLoaded = false;
-    var planLoaded = false;
 
     function activar(tab) {
       tabNueva.className = 'portal-tab' + (tab === 'nueva' ? ' portal-tab-active' : '');
-      tabPlan.className = 'portal-tab' + (tab === 'plan' ? ' portal-tab-active' : '');
       tabMias.className = 'portal-tab' + (tab === 'mias' ? ' portal-tab-active' : '');
       panelNueva.hidden = tab !== 'nueva';
-      panelPlan.hidden = tab !== 'plan';
       panelMias.hidden = tab !== 'mias';
-      if (tab === 'plan' && !planLoaded) {
-        planLoaded = true;
-        renderPlan(panelPlan, data, token, sessionToken);
-      }
       if (tab === 'mias' && !misSolicitudesLoaded) {
         misSolicitudesLoaded = true;
         renderMisSolicitudes(panelMias, data, token, sessionToken, irAReemplazar);
@@ -200,7 +187,6 @@
     }
 
     tabNueva.addEventListener('click', function () { activar('nueva'); });
-    tabPlan.addEventListener('click', function () { activar('plan'); });
     tabMias.addEventListener('click', function () { activar('mias'); });
 
     renderNuevaSolicitud(panelNueva, data, token, sessionToken, null);
@@ -474,243 +460,6 @@
 
     formBody.appendChild(form);
     container.appendChild(formBody);
-  }
-
-  // ---------- Sección: Cargar plan por plantilla de Excel ----------
-
-  var MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-  var DIAS_CORTOS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
-
-  function fechaLegible(iso) {
-    var p = iso.split('-').map(Number);
-    var d = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
-    return DIAS_CORTOS[d.getUTCDay()] + ' ' + p[2] + ' ' + MESES_CORTOS[p[1] - 1];
-  }
-
-  function descargarArchivo(bytes, nombre) {
-    var blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    var url = URL.createObjectURL(blob);
-    var link = el('a', { href: url, download: nombre });
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
-  }
-
-  function renderPlan(container, data, token, sessionToken) {
-    container.innerHTML = '';
-    var horaCierre = data.horaCierre || '18:00';
-    container.appendChild(el('p', {
-      class: 'conditions',
-      text: 'Si tu equipo trabaja con una proyección, no hace falta escribir día por día: descarga tu plantilla, complétala en Excel y súbela aquí. ' +
-        window.IchPlantilla.textoPlazo(horaCierre, data.horasAnticipacion) +
-        ' Lo que llegue fuera de plazo queda pendiente de aceptación interna.'
-    }));
-
-    var body = el('div', { class: 'form-body' });
-
-    // Paso 1: descargar
-    body.appendChild(el('h2', { class: 'plan-step', text: '1. Descarga tu plantilla' }));
-    var inicio = el('input', { type: 'date', id: 'plan-inicio', value: tomorrowIso() });
-    var dias = el('select', { id: 'plan-dias' });
-    [[7, '1 semana'], [14, '2 semanas'], [31, '1 mes'], [62, '2 meses']].forEach(function (option) {
-      var node = el('option', { value: String(option[0]), text: option[1] });
-      if (option[0] === 14) node.selected = true;
-      dias.appendChild(node);
-    });
-    body.appendChild(el('label', { text: 'Desde', for: 'plan-inicio' }));
-    body.appendChild(inicio);
-    body.appendChild(el('label', { text: 'Cuántos días', for: 'plan-dias' }));
-    body.appendChild(dias);
-    var descargar = el('button', { type: 'button', text: 'Descargar plantilla Excel' });
-    var descargaMsg = el('div', { class: 'message', hidden: 'hidden' });
-    descargar.addEventListener('click', function () {
-      if (!inicio.value) { renderMessage(descargaMsg, 'Elige la fecha de inicio.', 'error'); return; }
-      try {
-        var bytes = window.IchPlantilla.build({
-          cliente: data.clienteNombre || '',
-          codigo: data.codigoPlantilla,
-          descripcion: data.contratoDescripcion || '',
-          horaCierre: horaCierre,
-          horasAnticipacion: data.horasAnticipacion,
-          servicios: data.servicios || [],
-          inicio: inicio.value,
-          dias: Number(dias.value),
-          diasServicio: data.diasServicio || []
-        });
-        var nombre = 'Plantilla de pedidos - ' + (data.clienteNombre || 'cliente').replace(/[\\/:*?"<>|]+/g, ' ').trim() + '.xlsx';
-        descargarArchivo(bytes, nombre);
-        renderMessage(descargaMsg, 'Plantilla descargada. Complétala en Excel y súbela en el paso 2.', 'success');
-      } catch (error) {
-        renderMessage(descargaMsg, 'No se pudo crear la plantilla en este navegador.', 'error');
-      }
-    });
-    body.appendChild(descargar);
-    body.appendChild(descargaMsg);
-
-    // Paso 2: subir
-    body.appendChild(el('h2', { class: 'plan-step', text: '2. Sube la plantilla completa' }));
-    var archivo = el('input', { type: 'file', id: 'plan-archivo', accept: '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    body.appendChild(el('label', { text: 'Archivo Excel (.xlsx)', for: 'plan-archivo' }));
-    body.appendChild(archivo);
-    var revisionMsg = el('div', { class: 'message', hidden: 'hidden' });
-    var erroresBox = el('ul', { class: 'plan-errores', hidden: 'hidden' });
-    var resumenBox = el('div', { class: 'plan-resumen', hidden: 'hidden' });
-    body.appendChild(revisionMsg);
-    body.appendChild(erroresBox);
-    body.appendChild(resumenBox);
-
-    // Paso 3: confirmar (solo aparece cuando el archivo ya fue revisado sin errores)
-    var confirmBox = el('div', { hidden: 'hidden' });
-    confirmBox.appendChild(el('h2', { class: 'plan-step', text: '3. Confirma el envío' }));
-    confirmBox.appendChild(el('label', { text: 'Nombre de quien envía', for: 'plan-nombre' }));
-    var nombreInput = el('input', { type: 'text', id: 'plan-nombre', required: 'required' });
-    confirmBox.appendChild(nombreInput);
-    confirmBox.appendChild(el('label', { text: 'Correo de quien envía', for: 'plan-correo' }));
-    var correoInput = el('input', { type: 'email', id: 'plan-correo', required: 'required' });
-    confirmBox.appendChild(correoInput);
-    var honeypot = el('input', { type: 'text', name: 'sitioWeb', class: 'honeypot', tabindex: '-1', autocomplete: 'off' });
-    confirmBox.appendChild(honeypot);
-    var enviar = el('button', { type: 'button', text: 'Enviar plan' });
-    var envioMsg = el('div', { class: 'message', hidden: 'hidden' });
-    confirmBox.appendChild(enviar);
-    confirmBox.appendChild(envioMsg);
-    body.appendChild(confirmBox);
-    container.appendChild(body);
-
-    var leido = null;
-    var planSubmissionId = null;
-
-    function limpiarRevision() {
-      revisionMsg.hidden = true;
-      erroresBox.hidden = true;
-      erroresBox.innerHTML = '';
-      resumenBox.hidden = true;
-      resumenBox.innerHTML = '';
-      confirmBox.hidden = true;
-      envioMsg.hidden = true;
-      leido = null;
-    }
-
-    function mostrarErrores(titulo, lista) {
-      renderMessage(revisionMsg, titulo, 'error');
-      erroresBox.innerHTML = '';
-      (lista || []).slice(0, 30).forEach(function (texto) { erroresBox.appendChild(el('li', { text: texto })); });
-      erroresBox.hidden = (lista || []).length === 0;
-    }
-
-    function pintarResumen(resumen, diasLista) {
-      resumenBox.innerHTML = '';
-      resumenBox.appendChild(el('p', {
-        class: 'plan-resumen-total',
-        text: resumen.dias + ' días · ' + resumen.filas + ' líneas' +
-          (resumen.ceros ? ' · ' + resumen.ceros + ' en cero (ese servicio NO se pide ese día)' : '') +
-          (resumen.fueraDePlazo ? ' · ' + resumen.fueraDePlazo + ' fuera de plazo' : '')
-      }));
-      var tabla = el('table', { class: 'plan-tabla' });
-      var cabecera = el('tr', {}, [el('th', { text: 'Día' }), el('th', { text: 'Pedido' }), el('th', { text: 'Estado' })]);
-      tabla.appendChild(cabecera);
-      diasLista.forEach(function (dia) {
-        var texto = dia.servicios.map(function (item) {
-          return item.tipoServicio + (item.horario ? ' ' + item.horario : '') + ' ' + item.cantidad;
-        }).join(' · ');
-        var estado = dia.estado === 'fuera-de-plazo' ? 'Fuera de plazo' : 'En plazo';
-        tabla.appendChild(el('tr', { class: dia.estado === 'fuera-de-plazo' ? 'plan-fuera' : '' }, [
-          el('td', { text: fechaLegible(dia.fecha) }), el('td', { text: texto }), el('td', { text: estado })
-        ]));
-      });
-      resumenBox.appendChild(tabla);
-      resumenBox.hidden = false;
-    }
-
-    function postPlan(extra) {
-      return fetch('/api/requests/plan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign({
-          token: token,
-          sessionToken: sessionToken || undefined,
-          submissionId: planSubmissionId,
-          plantillaCodigo: leido.codigo,
-          dias: leido.dias
-        }, extra))
-      }).then(function (response) { return response.json(); });
-    }
-
-    archivo.addEventListener('change', function () {
-      limpiarRevision();
-      var file = archivo.files && archivo.files[0];
-      if (!file) return;
-      if (file.size > 5 * 1024 * 1024) { mostrarErrores('El archivo es demasiado grande para ser una plantilla.', []); return; }
-      renderMessage(revisionMsg, 'Revisando el archivo…', 'success');
-      file.arrayBuffer()
-        .then(function (buffer) { return window.IchPlantilla.read(buffer); })
-        .then(function (resultado) {
-          if (resultado.errores.length > 0) {
-            mostrarErrores('Hay casillas que corregir en el Excel y volver a subirlo:', resultado.errores);
-            return null;
-          }
-          if (resultado.dias.length === 0) {
-            mostrarErrores('No encontré cantidades en el archivo. Escribe los pedidos en la hoja «Pedidos» (y «Colaciones»).', []);
-            return null;
-          }
-          leido = resultado;
-          // Cada archivo elegido es un envío nuevo; reintentar ESTE mismo archivo no duplica nada.
-          planSubmissionId = crypto.randomUUID();
-          return postPlan({ confirmar: false });
-        })
-        .then(function (respuesta) {
-          if (respuesta === null || respuesta === undefined) return;
-          if (!respuesta.ok) {
-            leido = null;
-            mostrarErrores(respuesta.message || 'No se pudo revisar la plantilla.', respuesta.errores);
-            return;
-          }
-          renderMessage(revisionMsg, 'Archivo revisado. Mira el resumen y, si está bien, confirma el envío.', 'success');
-          pintarResumen(respuesta.resumen, respuesta.dias);
-          confirmBox.hidden = false;
-        })
-        .catch(function (error) {
-          leido = null;
-          mostrarErrores((error && error.message) || 'No se pudo leer el archivo. Sube la plantilla Excel (.xlsx) que descargaste aquí.', []);
-        });
-    });
-
-    enviar.addEventListener('click', function () {
-      if (!leido) return;
-      if (!nombreInput.value.trim() || !correoInput.value.trim()) {
-        renderMessage(envioMsg, 'Ingresa tu nombre y correo.', 'error');
-        return;
-      }
-      enviar.disabled = true;
-      enviar.textContent = 'Enviando…';
-      postPlan({
-        confirmar: true,
-        solicitanteNombre: nombreInput.value.trim(),
-        solicitanteCorreo: correoInput.value.trim(),
-        sitioWeb: honeypot.value
-      })
-        .then(function (respuesta) {
-          enviar.disabled = false;
-          enviar.textContent = 'Enviar plan';
-          if (respuesta && respuesta.ok) {
-            renderMessage(envioMsg, respuesta.message || 'Plan recibido.', 'success');
-            enviar.disabled = true;
-            archivo.value = '';
-          } else if (respuesta && /sesión/i.test(respuesta.message || '')) {
-            clearStoredSession(token);
-            renderMessage(envioMsg, respuesta.message, 'error');
-          } else {
-            renderMessage(envioMsg, ((respuesta && respuesta.message) || 'No fue posible enviar el plan.') +
-              (respuesta && respuesta.errores && respuesta.errores.length ? ' ' + respuesta.errores.join(' · ') : ''), 'error');
-          }
-        })
-        .catch(function () {
-          enviar.disabled = false;
-          enviar.textContent = 'Enviar plan';
-          renderMessage(envioMsg, 'Sin conexión. Puedes reintentar: no se duplicará lo que ya llegó.', 'error');
-        });
-    });
   }
 
   // ---------- Sección 2: Mis solicitudes ----------

@@ -228,15 +228,3 @@ button:hover:not(:disabled) { background: var(--accent-dark); }
 .status-label.status-gris { color: #fff; }
 .status-rojo.status-dot, .status-rojo.status-label { background: var(--error); }
 .status-label.status-rojo { color: #fff; }
-
-/* Cargar plan por plantilla de Excel */
-.plan-step { font-size: 1rem; margin: 22px 0 0; color: var(--accent-dark); }
-.plan-step:first-child { margin-top: 4px; }
-input[type="file"] { width: 100%; padding: 9px 10px; border: 1px dashed var(--accent); border-radius: 8px; background: #f7fafc; font-size: 0.95rem; }
-.plan-errores { margin: 8px 0 0; padding: 0 0 0 20px; color: var(--error); font-size: 0.88rem; }
-.plan-resumen { margin-top: 12px; }
-.plan-resumen-total { margin: 0 0 8px; font-weight: 600; font-size: 0.92rem; }
-.plan-tabla { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
-.plan-tabla th, .plan-tabla td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
-.plan-tabla th { color: var(--muted); font-weight: 600; }
-.plan-fuera td { background: #fff4e5; }
