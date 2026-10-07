@@ -140,11 +140,6 @@ async function findLatestRequestForReplacement(contratoId, tipoServicio, fechaSe
   return candidates[0];
 }
 
-/** Todas las solicitudes de un servicio del contrato — el plan por plantilla busca los reemplazos en memoria, no una consulta por fila. */
-async function listContractServiceRequests(contratoId, tipoServicio) {
-  return getListItems(LISTS.serviceRequests, `filter=fields/ContratoId eq ${contratoId} and fields/TipoServicio eq '${tipoServicio}'&top=500`);
-}
-
 async function createServiceRequest(fields) {
   return createListItem(LISTS.serviceRequests, fields);
 }
@@ -173,9 +168,7 @@ async function countRecentAttempts(canalId, codigoCanal, minutesWindow) {
     getListItems(LISTS.rejectedAttempts, `filter=fields/CanalId eq ${canalId}&top=200`)
   ]);
   const recent = (items) => items.filter((item) => new Date(item.fields.FechaRecepcion).getTime() >= sinceMs);
-  // Un envío cuenta una vez aunque escriba muchas filas (un plan por plantilla trae decenas).
-  const submissions = new Set(recent(accepted).map((item) => item.fields.SubmissionId || `id:${item.id}`));
-  return submissions.size + recent(rejected).length;
+  return recent(accepted).length + recent(rejected).length;
 }
 
 /** Canal de incidencias por establecimiento — mismo patrón que findChannelByTokenHash, lista separada. */
@@ -222,7 +215,6 @@ module.exports = {
   findByClaveFila,
   findLatestRequestForReplacement,
   createServiceRequest,
-  listContractServiceRequests,
   logRejectedAttempt,
   countRecentAttempts,
   listActiveChannels,

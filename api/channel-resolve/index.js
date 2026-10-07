@@ -3,10 +3,9 @@ const {
   findChannelByTokenHash,
   getClientName,
   getActiveContractServiceTypes,
-  getContract,
   logRejectedAttempt
 } = require('../shared/repository');
-const { authorizedServices, parseDiasServicio } = require('../shared/serviceCatalog');
+const { authorizedServices } = require('../shared/serviceCatalog');
 const { sendJson } = require('../shared/respond');
 
 // Siempre la misma forma de respuesta ante cualquier falla — nunca revela si el token
@@ -43,10 +42,9 @@ module.exports = async function (context, req) {
       return;
     }
 
-    const [clienteNombre, activeServiceTypes, contract] = await Promise.all([
+    const [clienteNombre, activeServiceTypes] = await Promise.all([
       getClientName(fields.ClienteId),
-      getActiveContractServiceTypes(fields.ContratoId),
-      getContract(fields.ContratoId)
+      getActiveContractServiceTypes(fields.ContratoId)
     ]);
     const servicios = authorizedServices(fields.Modalidad, activeServiceTypes, fields.ExcepcionesServicios);
 
@@ -56,12 +54,7 @@ module.exports = async function (context, req) {
       modalidad: fields.Modalidad,
       servicios,
       horaCierre: fields.HoraCierre || '18:00',
-      requierePin: Boolean(fields.PinHash && fields.PinSalt),
-      // Para armar la plantilla de Excel de ESTE cliente: su contrato, su plazo y sus días de servicio.
-      codigoPlantilla: fields.Codigo,
-      contratoDescripcion: (contract && contract.fields.ContratoServicio) || '',
-      horasAnticipacion: (contract && contract.fields.HorasAnticipacionSolicitudes) || undefined,
-      diasServicio: parseDiasServicio(contract && contract.fields.DiasServicio)
+      requierePin: Boolean(fields.PinHash && fields.PinSalt)
     });
   } catch (error) {
     context.log.error('Error inesperado en channel/resolve', error);
