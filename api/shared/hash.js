@@ -69,7 +69,49 @@ function verifySession(sessionToken) {
   }
 }
 
+/**
+ * Sesión del PERSONAL de hospedaje (camareras, supervisoras, recepción). Es distinta de la sesión de
+ * un canal de solicitudes: otro formato (pid en vez de cid), así una nunca sirve como la otra.
+ * Dura un turno (12 h) porque la camarera usa el celular todo el día. Lleva una huella corta de la
+ * sal del PIN: si la supervisión genera un PIN nuevo, todas las sesiones anteriores de esa persona
+ * dejan de valer de inmediato. El servidor además vuelve a leer a la persona en cada llamada
+ * (si está desactivada, no entra aunque el token siga vigente).
+ */
+const STAFF_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+
+function saltFingerprint(saltHex) {
+  return crypto.createHash('sha256').update(String(saltHex || ''), 'utf8').digest('hex').slice(0, 12);
+}
+
+function signStaffSession(personId, saltHex, nowMs) {
+  const payload = JSON.stringify({ pid: personId, sf: saltFingerprint(saltHex), exp: (nowMs || Date.now()) + STAFF_SESSION_TTL_MS });
+  const payloadB64 = Buffer.from(payload, 'utf8').toString('base64url');
+  const mac = crypto.createHmac('sha256', getSessionSecret()).update(`staff.${payloadB64}`).digest('base64url');
+  return `${payloadB64}.${mac}`;
+}
+
+/** Devuelve { personId, saltFingerprint } si la sesión es válida y vigente, o null. Nunca lanza. */
+function verifyStaffSession(sessionToken, nowMs) {
+  try {
+    if (typeof sessionToken !== 'string' || !sessionToken.includes('.')) return null;
+    const [payloadB64, mac] = sessionToken.split('.');
+    const expectedMac = crypto.createHmac('sha256', getSessionSecret()).update(`staff.${payloadB64}`).digest('base64url');
+    const macBuf = Buffer.from(mac);
+    const expectedBuf = Buffer.from(expectedMac);
+    if (macBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(macBuf, expectedBuf)) return null;
+    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+    if (!payload || typeof payload.pid !== 'number' || typeof payload.sf !== 'string' || typeof payload.exp !== 'number') return null;
+    if ((nowMs || Date.now()) > payload.exp) return null;
+    return { personId: payload.pid, saltFingerprint: payload.sf };
+  } catch {
+    return null;
+  }
+}
+
 module.exports = {
+  signStaffSession,
+  verifyStaffSession,
+  saltFingerprint,
   hashToken,
   hashPin,
   verifyPin,

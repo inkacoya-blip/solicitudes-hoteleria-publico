@@ -240,3 +240,54 @@ input[type="file"] { width: 100%; padding: 9px 10px; border: 1px dashed var(--ac
 .plan-tabla th, .plan-tabla td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .plan-tabla th { color: var(--muted); font-weight: 600; }
 .plan-fuera td { background: #fff4e5; }
+
+/* ---------- App del celular de hospedaje (camareras.html) ---------- */
+.hk .form-body { padding-bottom: 8px; }
+.hk-top { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px 0; gap: 8px; }
+.hk-top h2 { margin: 0; font-size: 1.05rem; color: var(--accent-dark); }
+.hk-who { font-size: 0.85rem; color: var(--muted); }
+.hk button.hk-link { margin: 0; width: auto; padding: 8px 4px; background: transparent; color: var(--accent); font-size: 0.95rem; font-weight: 600; }
+.hk button.hk-link:hover:not(:disabled) { background: transparent; text-decoration: underline; }
+.hk button.hk-big { margin: 10px 0 0; padding: 18px 14px; font-size: 1.1rem; text-align: left; }
+.hk button.hk-secondary { background: #fff; color: var(--accent); border: 1px solid var(--accent); margin-top: 10px; }
+.hk button.hk-secondary:hover:not(:disabled) { background: #eef4f7; color: var(--accent-dark); }
+.hk-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.hk-row > * { flex: 1; }
+.hk button.hk-chip { margin: 0; width: auto; flex: 0 0 auto; padding: 8px 18px; border-radius: 999px; background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+.hk button.hk-chip-on, .hk button.hk-chip-on:hover:not(:disabled) { background: var(--accent); color: #fff; }
+.hk-progress { margin: 14px 0 0; font-weight: 700; color: var(--accent-dark); }
+.hk-help { margin: 6px 0 0; font-size: 0.82rem; color: var(--muted); line-height: 1.35; }
+.hk-pre { white-space: pre-wrap; font-size: 0.9rem; margin: 4px 0; }
+.hk-rooms { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.hk-room { border: 1px solid var(--border); border-radius: 10px; background: #fff; overflow: hidden; }
+.hk-room-done { border-left: 5px solid var(--success); }
+.hk-room-open { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.hk button.hk-room-head { margin: 0; width: 100%; display: flex; align-items: center; gap: 12px; padding: 14px 12px; background: transparent; color: var(--text); text-align: left; border-radius: 0; font-weight: 400; }
+.hk button.hk-room-head:hover:not(:disabled) { background: #f4f8fa; }
+.hk-room-number { min-width: 44px; font-size: 1.35rem; color: var(--accent-dark); }
+.hk-room-summary { flex: 1; font-size: 0.88rem; color: var(--muted); line-height: 1.3; }
+.hk-badge { background: #fff3cd; color: #7a5b00; border: 1px solid #f0d98a; border-radius: 999px; padding: 2px 10px; font-size: 0.75rem; font-weight: 700; }
+.hk-bpm-card { padding: 12px; }
+.hk-bpm-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.hk-editor { padding: 4px 12px 14px; border-top: 1px solid var(--border); background: #fafbfc; }
+.hk-editor > * { margin-top: 10px; }
+.hk-seg { display: flex; gap: 6px; }
+.hk button.hk-seg-btn { margin: 0; flex: 1; padding: 14px 6px; background: #fff; color: var(--accent); border: 1px solid var(--accent); font-size: 0.95rem; }
+.hk button.hk-seg-on, .hk button.hk-seg-on:hover:not(:disabled) { background: var(--accent); color: #fff; }
+.hk-step { display: flex; align-items: center; gap: 10px; }
+.hk-step-label { flex: 1; font-size: 0.95rem; font-weight: 600; }
+.hk button.hk-step-btn { margin: 0; width: 46px; height: 46px; padding: 0; font-size: 1.4rem; border-radius: 50%; }
+.hk-step-value { min-width: 30px; text-align: center; font-size: 1.2rem; font-weight: 700; }
+.hk-check { display: flex; align-items: center; gap: 10px; font-weight: 400; margin: 12px 0 0; font-size: 1rem; }
+.hk-check input { width: 26px; height: 26px; flex: 0 0 auto; }
+.hk-actions button { margin-top: 10px; }
+.hk-review { margin-top: 14px; padding: 10px; border: 1px dashed var(--accent); border-radius: 8px; }
+.hk-section { margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--border); }
+.hk-section h2 { margin: 0 0 8px; font-size: 1.1rem; color: var(--accent-dark); }
+.hk-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.hk-list li { padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+.hk-damage { margin-top: 10px; padding: 10px; border: 1px solid #f0c9c6; border-radius: 8px; background: #fff7f6; }
+.hk-sheet { position: fixed; inset: 0; background: rgba(15, 30, 40, 0.55); display: flex; align-items: flex-end; justify-content: center; z-index: 50; }
+.hk-sheet-card { background: #fff; width: 100%; max-width: 480px; max-height: 92vh; overflow-y: auto; border-radius: 16px 16px 0 0; padding: 0 16px 24px; }
+.hk-sheet-card > *:not(.hk-top) { margin-top: 12px; }
+.hk-sheet-card .hk-top { padding: 12px 0 0; position: sticky; top: 0; background: #fff; }

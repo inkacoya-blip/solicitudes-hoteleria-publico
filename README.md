@@ -48,6 +48,30 @@ y la sube.
 
 Pruebas: `cd api && npm test` y luego `node pruebas/_planCore.test.js && node pruebas/_plantilla.test.js && node pruebas/_requestsPlan.test.js` (incluye crear→llenar→leer la plantilla y el endpoint con SharePoint simulado).
 
+## App del celular de hospedaje (camareras, supervisoras, recepción)
+
+Página `camareras.html` (+ `camareras.js`) y una sola Function con ruta `/api/hk/<acción>` (`api/hk/index.js`).
+Es la otra mitad de la pestaña «Piezas y personal» del ERP: allá se cargan casas, piezas y personas; acá se registra el día.
+
+- **Entrada personal, no por enlace compartido**: código (CAM-001, SUP-001…) + PIN de 6 dígitos de `ICH_PERSONAL_HOSPEDAJE`
+  (PBKDF2 igual que los canales; 5 intentos → bloqueo de 15 min por persona). Sesión de 12 h firmada (`signStaffSession`) que
+  muere si se desactiva a la persona o se genera un PIN nuevo. Un código inexistente responde igual que un PIN malo.
+- **QR**: casa = `camareras.html#/c/<id casa>`, pieza = `camareras.html#/c/<id casa>/<número>`. No llevan ningún secreto: sin el PIN no abren nada.
+- **Parte diario** (`ICH_PARTE_PIEZA`, una fila por día y pieza, clave única `fecha|pieza`): ocupada / vacía / sale hoy, empresa o contrato
+  (solo los vinculados a esa casa ese día, validado en el servidor), personas, camas, limpieza, sábanas, aseo a fondo, «sin daños».
+  La camarera registra hoy o ayer; la supervisora corrige hasta 14 días atrás. Cada cambio queda en `ICH_PARTE_CAMBIOS` con quién lo hizo.
+- **Cierre del día** por casa (`ICH_CIERRE_CASA`): solo la supervisora, y solo si todas las piezas activas tienen parte. Un día cerrado no se edita
+  hasta que ella lo reabre con un motivo. Solo los días cerrados alimentan el EDP de hospedaje.
+- **Revisión al azar** de hasta 3 piezas por camarera y día (elegidas por un orden fijo según la fecha), con resultado Conforme/Observada.
+- **Daños** (en `ICH_INCIDENCIAS`): *Desgaste* (no se cobra) o *Posible mal uso* (foto obligatoria; la supervisora lo confirma y avisa al cliente;
+  queda «Por revisar» para el cobro). Guarda qué contrato ocupaba la pieza ese día.
+- **Insumos a Bodega** (`ICH_SOLICITUDES_INSUMOS`): por casa, pieza opcional, queda quién pidió. No hay toallas en el catálogo.
+- **Registros BPM** (solo supervisora; `#/bpm` o `#/bpm/<código del formato>` desde el QR): las hojas de temperatura, higiene y limpieza siguen en papel; la supervisora sube la **foto de la hoja** y anota mínima/máxima (o «fuera de límite», o cumple/no cumple). El servidor compara contra los límites del formato (lista `ICH_BPM_FORMATOS`, que siembra el ERP) y decide «Conforme» o «Fuera de límite»; fuera de límite exige decir qué se hizo y queda con acción correctiva pendiente en el ERP. Fotos en `BpmFotos/AAAA-MM/` de la biblioteca del sitio; registros en `ICH_BPM_REGISTROS` (clave de envío única: un doble toque no duplica). Acciones `bpm-list` y `bpm-record`.
+- Sin modo sin conexión (hay señal en todas las casas).
+
+Pruebas (SharePoint simulado en memoria): `node pruebas/_hkCore.test.js && node pruebas/_hk.test.js && node pruebas/_bpm.test.js`.
+El ERP debe haberse abierto antes con una cuenta administradora para que existan las listas nuevas (esquema 3.67.0).
+
 ## Qué falta para desplegar (requiere permisos que no tengo)
 
 1. **Entra ID App Registration**, con permiso de aplicación (no delegado)
