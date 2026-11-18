@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { authorizedServices, isColacion } = require('./serviceCatalog');
+const { authorizedServices, isColacion, countsForSuggestion } = require('./serviceCatalog');
 
 // El contrato tiene tarifas activas para Almuerzo y Cena, pero la modalidad es
 // "Almuerzo a terreno" — Cena no debe aparecer aunque esté en el contrato, porque
@@ -29,3 +29,10 @@ assert.strictEqual(isColacion('Almuerzo'), false);
 assert.strictEqual(isColacion('Desayuno reforzado'), false);
 
 console.log('Todas las pruebas de servicios autorizados pasaron.');
+
+// «Sugerencias desde»: sin fecha cuenta todo lo anterior; con fecha, solo desde ese día (el historial no se borra).
+assert.strictEqual(countsForSuggestion('2026-10-02T03:00:00Z', '2026-11-19', undefined), true);
+assert.strictEqual(countsForSuggestion('2026-10-02T03:00:00Z', '2026-11-19', '2026-10-04T03:00:00Z'), false);
+assert.strictEqual(countsForSuggestion('2026-10-04T03:00:00Z', '2026-11-19', '2026-10-04T03:00:00Z'), true);
+assert.strictEqual(countsForSuggestion('2026-11-19T03:00:00Z', '2026-11-19', '2026-10-04'), false);
+console.log('Pruebas de «Sugerencias desde» pasaron.');

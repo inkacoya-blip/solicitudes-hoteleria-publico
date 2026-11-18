@@ -63,7 +63,7 @@ module.exports = async function (context, req) {
         // Colación se arrastra por bloque horario — el resto de los servicios sigue igual
         // que siempre (un solo bloque por día).
         if (isColacion(servicio)) {
-          const priorBlocks = await getLastOfficialColacionBlocksBefore(fields.ContratoId, servicio, manana);
+          const priorBlocks = await getLastOfficialColacionBlocksBefore(fields.ContratoId, servicio, manana, contract.fields.SugerenciasDesde);
           if (priorBlocks.length === 0) {
             alertas.push({
               contratoId: fields.ContratoId,
@@ -117,7 +117,7 @@ module.exports = async function (context, req) {
         const yaExiste = await hasOfficialRequestForDate(fields.ContratoId, servicio, manana);
         if (yaExiste) continue;
 
-        const cantidad = await getLastOfficialQuantityBefore(fields.ContratoId, servicio, manana);
+        const cantidad = await getLastOfficialQuantityBefore(fields.ContratoId, servicio, manana, contract.fields.SugerenciasDesde);
         if (cantidad === undefined) {
           // Nunca se inventa un cero: si no hay ningun dia anterior valido, se deja como
           // alerta para que el equipo lo resuelva a mano.

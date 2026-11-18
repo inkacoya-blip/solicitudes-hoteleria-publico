@@ -62,4 +62,16 @@ function operatesOnWeekday(diasServicioJson, fechaIso) {
   return dias.includes(byIndex[weekdayIndex]);
 }
 
-module.exports = { questionSetFor, authorizedServices, parseDiasServicio, operatesOnWeekday, isColacion };
+/**
+ * Si una solicitud oficial cuenta para calcular la sugerencia (arrastre) del día beforeDateIso:
+ * debe ser de un día anterior y, si el contrato tiene «Sugerencias desde» (SugerenciasDesde),
+ * de ese día en adelante. Sirve para que un error antiguo del cliente deje de repetirse en las
+ * sugerencias sin borrar el historial.
+ */
+function countsForSuggestion(fechaServicio, beforeDateIso, sugerenciasDesde) {
+  const fecha = (fechaServicio || '').slice(0, 10);
+  const desde = (sugerenciasDesde || '').slice(0, 10);
+  return fecha < beforeDateIso && (desde === '' || fecha >= desde);
+}
+
+module.exports = { questionSetFor, authorizedServices, parseDiasServicio, operatesOnWeekday, isColacion, countsForSuggestion };

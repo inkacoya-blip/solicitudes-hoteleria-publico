@@ -1,4 +1,5 @@
 const { getListItems, getListItemById, createListItem, updateListItem } = require('./graph');
+const { countsForSuggestion } = require('./serviceCatalog');
 
 const LISTS = {
   channels: 'ICH_CANALES_SOLICITUDES',
@@ -21,14 +22,14 @@ function getContract(contratoId) {
   return getListItemById(LISTS.contracts, contratoId);
 }
 
-/** Ultima cantidad OFICIAL valida para ese servicio, en una fecha anterior a la indicada (nunca inventa un valor). */
-async function getLastOfficialQuantityBefore(contratoId, tipoServicio, beforeDateIso) {
+/** Ultima cantidad OFICIAL valida para ese servicio, en una fecha anterior a la indicada y desde «Sugerencias desde» si el contrato la tiene (nunca inventa un valor). */
+async function getLastOfficialQuantityBefore(contratoId, tipoServicio, beforeDateIso, sugerenciasDesde) {
   const items = await getListItems(
     LISTS.serviceRequests,
     `filter=fields/ContratoId eq ${contratoId} and fields/TipoServicio eq '${tipoServicio}' and fields/EstadoSolicitud eq 'Oficial'&top=500`
   );
   const prior = items
-    .filter((item) => (item.fields.FechaServicio || '').slice(0, 10) < beforeDateIso)
+    .filter((item) => countsForSuggestion(item.fields.FechaServicio, beforeDateIso, sugerenciasDesde))
     .sort((a, b) => (a.fields.FechaServicio < b.fields.FechaServicio ? 1 : -1));
   return prior[0] ? prior[0].fields.CantidadOficial : undefined;
 }
@@ -54,12 +55,12 @@ async function hasOfficialRequestForDateAndHorario(contratoId, tipoServicio, hor
 
 /** Solo Colación: todos los bloques 'Oficial' (uno por horario) del día válido anterior más
  * reciente antes de beforeDateIso — nunca mezcla bloques de días distintos entre sí. */
-async function getLastOfficialColacionBlocksBefore(contratoId, tipoServicio, beforeDateIso) {
+async function getLastOfficialColacionBlocksBefore(contratoId, tipoServicio, beforeDateIso, sugerenciasDesde) {
   const items = await getListItems(
     LISTS.serviceRequests,
     `filter=fields/ContratoId eq ${contratoId} and fields/TipoServicio eq '${tipoServicio}' and fields/EstadoSolicitud eq 'Oficial'&top=500`
   );
-  const prior = items.filter((item) => (item.fields.FechaServicio || '').slice(0, 10) < beforeDateIso);
+  const prior = items.filter((item) => countsForSuggestion(item.fields.FechaServicio, beforeDateIso, sugerenciasDesde));
   if (prior.length === 0) return [];
   const latestDate = prior.reduce((max, item) => {
     const date = (item.fields.FechaServicio || '').slice(0, 10);
