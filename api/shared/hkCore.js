@@ -8,6 +8,8 @@ const { chileWallClock } = require('./time');
 const OCUPACIONES = ['Ocupada', 'Vacía', 'Sale hoy'];
 const TIPOS_DANO = ['Desgaste', 'Posible mal uso'];
 const ROLES_SUPERVISION = ['Supervisora'];
+/** Personal que solo sube las hojas BPM de su área (cocina, casino, bodega y reparto): no ve casas ni piezas. */
+const ROLES_SOLO_BPM = ['Cocina', 'Garzón', 'Auxiliar de casino', 'Bodega', 'Conductor'];
 
 /** Insumos que se pueden pedir con un toque. No hay toallas (decisión de Francisca). «Otro» abre texto libre. */
 const SUPPLY_CATALOG = [
@@ -61,6 +63,15 @@ function dayNumber(iso) {
 
 function isSupervision(rol) {
   return ROLES_SUPERVISION.includes(rol);
+}
+
+function isSoloBpm(rol) {
+  return ROLES_SOLO_BPM.includes(rol);
+}
+
+/** Quién puede subir hojas BPM: la supervisora y el personal de cocina, casino, bodega y reparto. */
+function canBpm(rol) {
+  return isSupervision(rol) || isSoloBpm(rol);
 }
 
 /** La camarera registra hoy (y ayer, por si cerró el turno tarde); la supervisora puede revisar y corregir hasta 14 días atrás. Nunca el futuro. */
@@ -352,6 +363,8 @@ module.exports = {
   daysBetween,
   dayNumber,
   isSupervision,
+  isSoloBpm,
+  canBpm,
   checkWorkDate,
   compareRoomNumbers,
   normalizeRoomInput,

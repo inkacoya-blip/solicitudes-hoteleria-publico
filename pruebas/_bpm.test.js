@@ -6,11 +6,13 @@ const core = require('../api/shared/hkCore');
 
 const SALT_CAM = 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4';
 const SALT_SUP = 'f1e2d3c4b5a6f1e2d3c4b5a6f1e2d3c4';
+const SALT_COC = '0a1b2c3d4e5f0a1b2c3d4e5f0a1b2c3d';
 let nextId = 100;
 const duplicate = () => Object.assign(new Error('dup'), { detail: 'The list item already has the value' });
 const db = {
   staff: [
     { id: '1', fields: { Title: 'Ana Pérez', Codigo: 'CAM-001', Rol: 'Camarera', Activo: true, PinSalt: SALT_CAM, PinHash: hashPin('482913', SALT_CAM), PinIntentosFallidos: 0 } },
+    { id: '3', fields: { Title: 'Luis Mamani', Codigo: 'COC-001', Rol: 'Cocina', Activo: true, PinSalt: SALT_COC, PinHash: hashPin('264817', SALT_COC), PinIntentosFallidos: 0 } },
     { id: '2', fields: { Title: 'Sofía Rojas', Codigo: 'SUP-001', Rol: 'Supervisora', Activo: true, PinSalt: SALT_SUP, PinHash: hashPin('715384', SALT_SUP), PinIntentosFallidos: 0 } }
   ],
   formats: [
@@ -70,6 +72,20 @@ const PHOTO = Buffer.from('foto').toString('base64');
   assert.strictEqual((await handlers.bpmList({ sessionToken: cam.sessionToken })).ok, false, 'la camarera no ve los registros BPM');
   assert.strictEqual((await handlers.bpmRecord({ sessionToken: cam.sessionToken, codigo: 'RG-07-01', cumple: true, fotoBase64: PHOTO, submissionId: 'x' })).ok, false);
   assert.strictEqual((await handlers.bpmList({ sessionToken: 'basura' })).sessionExpired, true);
+  assert.strictEqual(core.canBpm('Cocina'), true);
+  assert.strictEqual(core.canBpm('Camarera'), false);
+  const coc = await handlers.login({ codigo: 'COC-001', pin: '264817' });
+  assert.strictEqual(coc.persona.soloBpm, true, 'cocina entra solo a BPM');
+  assert.strictEqual(coc.persona.bpm, true);
+  assert.strictEqual(cam.persona.bpm, false);
+  const cocList = await handlers.bpmList({ sessionToken: coc.sessionToken });
+  assert.strictEqual(cocList.ok, true, 'cocina ve las hojas BPM');
+  const cocSent = await handlers.bpmRecord({ sessionToken: coc.sessionToken, codigo: 'RG-07-01', cumple: true, fotoBase64: PHOTO, submissionId: 'coc-1' });
+  assert.strictEqual(cocSent.ok, true, 'cocina sube su hoja');
+  assert.strictEqual(db.records.pop().fields.RegistradoPorCodigo, 'COC-001');
+  const cocHouses = await handlers.houses({ sessionToken: coc.sessionToken });
+  assert.strictEqual(cocHouses.ok, false, 'cocina no entra a casas ni piezas');
+  assert.ok(/solo para subir/.test(cocHouses.message));
 
   // --- Lista del día
   const list = await handlers.bpmList({ sessionToken: sup.sessionToken });

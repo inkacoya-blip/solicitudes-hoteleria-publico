@@ -70,12 +70,15 @@ function createHandlers(deps) {
   const clock = deps.now || (() => new Date());
   const isoNow = () => clock().toISOString();
 
-  async function authenticate(body) {
+  async function authenticate(body, options) {
     const session = verifyStaffSession(body.sessionToken, clock().getTime());
     if (!session) return { error: SESSION_ENDED };
     const person = await repo.getStaffById(session.personId);
     if (!person || !person.fields.Activo) return { error: SESSION_ENDED };
     if (saltFingerprint(person.fields.PinSalt) !== session.saltFingerprint) return { error: SESSION_ENDED };
+    if (core.isSoloBpm(person.fields.Rol) && !(options && options.bpm)) {
+      return { error: { ok: false, message: 'Tu acceso es solo para subir las hojas de registros BPM de tu área.' } };
+    }
     return {
       person: {
         id: Number(person.id),
@@ -83,7 +86,8 @@ function createHandlers(deps) {
         nombre: person.fields.Title,
         rol: person.fields.Rol,
         label: core.staffLabel(person.fields),
-        supervision: core.isSupervision(person.fields.Rol)
+        supervision: core.isSupervision(person.fields.Rol),
+        bpm: core.canBpm(person.fields.Rol)
       }
     };
   }
@@ -163,7 +167,7 @@ function createHandlers(deps) {
       return {
         ok: true,
         sessionToken: signStaffSession(Number(person.id), fields.PinSalt, clock().getTime()),
-        persona: { codigo: fields.Codigo, nombre: fields.Title, rol: fields.Rol, supervision: core.isSupervision(fields.Rol) }
+        persona: { codigo: fields.Codigo, nombre: fields.Title, rol: fields.Rol, supervision: core.isSupervision(fields.Rol), bpm: core.canBpm(fields.Rol), soloBpm: core.isSoloBpm(fields.Rol) }
       };
     },
 
@@ -552,9 +556,9 @@ function createHandlers(deps) {
     /* ---------- Registros BPM: la supervisora sube la foto de la hoja y anota mínima/máxima o «fuera de límite» ---------- */
 
     async bpmList(body) {
-      const auth = await authenticate(body);
+      const auth = await authenticate(body, { bpm: true });
       if (auth.error) return auth.error;
-      if (!auth.person.supervision) return { ok: false, message: 'Los registros BPM los sube la supervisora.' };
+      if (!auth.person.bpm) return { ok: false, message: 'Los registros BPM los suben la supervisora y el personal de cocina, casino, bodega y reparto.' };
       const today = core.chileToday(clock());
       const fecha = body.fecha === undefined || body.fecha === '' ? today : body.fecha;
       const dateCheck = core.checkWorkDate(auth.person.rol, fecha, today);
@@ -590,9 +594,9 @@ function createHandlers(deps) {
     },
 
     async bpmRecord(body) {
-      const auth = await authenticate(body);
+      const auth = await authenticate(body, { bpm: true });
       if (auth.error) return auth.error;
-      if (!auth.person.supervision) return { ok: false, message: 'Los registros BPM los sube la supervisora.' };
+      if (!auth.person.bpm) return { ok: false, message: 'Los registros BPM los suben la supervisora y el personal de cocina, casino, bodega y reparto.' };
       const today = core.chileToday(clock());
       const fecha = body.fecha === undefined || body.fecha === '' ? today : body.fecha;
       const dateCheck = core.checkWorkDate(auth.person.rol, fecha, today);

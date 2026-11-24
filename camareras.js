@@ -192,14 +192,15 @@
   }
 
   function start() {
+    if (state.persona.soloBpm) { var onlyCode = state.bpmTarget ? state.bpmTarget.codigo : null; state.bpmTarget = null; return openBpm(null, onlyCode); }
     return api('houses').then(function (data) {
       if (!data.ok) { showNotice('error', data.message || 'No fue posible cargar las casas.'); return; }
       state.casas = data.casas;
       if (state.bpmTarget) {
         var wantedBpm = state.bpmTarget;
         state.bpmTarget = null;
-        if (state.persona.supervision) return openBpm(null, wantedBpm.codigo);
-        state.notice = { type: 'error', text: 'Los registros BPM los sube la supervisora.' };
+        if (state.persona.bpm) return openBpm(null, wantedBpm.codigo);
+        state.notice = { type: 'error', text: 'Los registros BPM los suben la supervisora y el personal de cocina, casino, bodega y reparto.' };
       }
       // Con el QR de una casa se abre esa casa; si el personal solo tiene una, también; si no, elige.
       var wanted = state.target && state.casas.some(function (casa) { return casa.id === state.target.casaId; }) ? state.target.casaId : null;
@@ -220,7 +221,7 @@
     state.casas.forEach(function (casa) {
       body.appendChild(el('button', { type: 'button', class: 'hk-big', text: casa.nombre, onclick: function () { openHouse(casa.id, null); } }));
     });
-    if (state.persona.supervision) body.appendChild(el('button', { type: 'button', class: 'hk-secondary', text: 'Registros BPM (temperaturas, higiene, limpieza)', onclick: function () { openBpm(null, null); } }));
+    if (state.persona.bpm) body.appendChild(el('button', { type: 'button', class: 'hk-secondary', text: 'Registros BPM (temperaturas, higiene, limpieza)', onclick: function () { openBpm(null, null); } }));
     app.appendChild(body);
   }
 
