@@ -18,6 +18,20 @@ async function listActiveChannels() {
   return items.filter((item) => item.fields.Estado === 'Activo');
 }
 
+/** Contratos con pedido fijo configurado (la lista de contratos es chica: se filtra en JS). */
+async function listContractsWithFixedOrder() {
+  const items = await getListItems(LISTS.contracts, 'top=500');
+  return items.filter((item) => typeof item.fields.PedidoFijo === 'string' && item.fields.PedidoFijo.trim() !== '');
+}
+
+/** Precio neto de cada servicio con tarifa ACTIVA del contrato (para dejar el precio en la solicitud del pedido fijo). */
+async function getActiveRatePrices(contratoId) {
+  const items = await getListItems(LISTS.contractRates, `filter=fields/ContratoId eq ${contratoId}&top=500`);
+  const prices = {};
+  items.filter((item) => item.fields.Activo).forEach((item) => { prices[item.fields.TipoServicio] = Number(item.fields.PrecioNeto) || 0; });
+  return prices;
+}
+
 function getContract(contratoId) {
   return getListItemById(LISTS.contracts, contratoId);
 }
@@ -227,6 +241,8 @@ module.exports = {
   logRejectedAttempt,
   countRecentAttempts,
   listActiveChannels,
+  listContractsWithFixedOrder,
+  getActiveRatePrices,
   getContract,
   getLastOfficialQuantityBefore,
   hasOfficialRequestForDate,

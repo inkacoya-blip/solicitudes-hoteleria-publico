@@ -1,8 +1,11 @@
 const { chileTomorrow } = require('../shared/time');
 const { authorizedServices, operatesOnWeekday, isColacion } = require('../shared/serviceCatalog');
 const { sendJson } = require('../shared/respond');
+const { fixedOrderLinesFor, contractTakesFixedOrder } = require('../shared/fixedOrder');
 const {
   listActiveChannels,
+  listContractsWithFixedOrder,
+  getActiveRatePrices,
   getContract,
   getActiveContractServiceTypes,
   hasOfficialRequestForDate,
@@ -41,6 +44,52 @@ module.exports = async function (context, req) {
 
     const arrastrados = [];
     const alertas = [];
+    const pedidosFijos = [];
+
+    // 1) Pedido fijo (ej. Lavandería): queda registrado como solicitud OFICIAL del día siguiente,
+    //    sin confirmación. Va antes de las sugerencias: así esos servicios nunca quedan como «sugeridos».
+    const fixedContracts = await listContractsWithFixedOrder();
+    for (const contract of fixedContracts) {
+      const cf = contract.fields;
+      if (!contractTakesFixedOrder(cf, manana)) continue;
+      const contratoId = Number(contract.id);
+      const prices = await getActiveRatePrices(contratoId);
+      for (const line of fixedOrderLinesFor(cf.PedidoFijo, manana)) {
+        const hora = isColacion(line.TipoServicio) ? line.Hora : undefined;
+        const yaExiste = hora
+          ? await hasOfficialRequestForDateAndHorario(contratoId, line.TipoServicio, hora, manana)
+          : await hasOfficialRequestForDate(contratoId, line.TipoServicio, manana);
+        if (yaExiste) continue;
+        const claveFila = `pedidofijo|${contratoId}|${manana}|${line.TipoServicio}|${hora || ''}`;
+        try {
+          await createServiceRequest({
+            Title: claveFila,
+            ClienteId: cf.ClienteId,
+            ContratoId: contratoId,
+            ContratoServicio: cf.ContratoServicio,
+            FechaServicio: manana,
+            TipoServicio: line.TipoServicio,
+            HoraServicio: hora,
+            CantidadOficial: line.Cantidad,
+            OrigenSolicitud: 'Proyección automática',
+            EstadoSolicitud: 'Oficial',
+            PrecioUnitario: prices[line.TipoServicio] || 0,
+            FechaRecepcion: now.toISOString(),
+            VersionSolicitud: 1,
+            CanalIngreso: 'Proyección automática',
+            ConfirmadaPor: 'Pedido fijo del contrato',
+            ConfirmadaEn: now.toISOString(),
+            Observacion: 'Pedido fijo',
+            ClaveFila: claveFila
+          });
+          pedidosFijos.push({ contratoId, tipoServicio: line.TipoServicio, cantidad: line.Cantidad });
+        } catch (error) {
+          if (isDuplicateValueError(error)) continue;
+          context.log.error(`Error creando pedido fijo para contrato ${contratoId}/${line.TipoServicio}`, error);
+          alertas.push({ contratoId, contratoServicio: cf.ContratoServicio, tipoServicio: line.TipoServicio, motivo: 'Error al registrar el pedido fijo — revisar manualmente.' });
+        }
+      }
+    }
 
     for (const channel of channels) {
       const fields = channel.fields;
@@ -163,7 +212,7 @@ module.exports = async function (context, req) {
       }
     }
 
-    sendJson(context, 200, { ok: true, fecha: manana, arrastrados, alertas });
+    sendJson(context, 200, { ok: true, fecha: manana, pedidosFijos, arrastrados, alertas });
   } catch (error) {
     context.log.error('Error inesperado en arrastre-diario', error);
     sendJson(context, 500, { ok: false, message: String((error && error.stack) || error) });
