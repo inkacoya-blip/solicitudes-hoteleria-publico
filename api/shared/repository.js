@@ -115,11 +115,19 @@ async function getClientName(clienteId) {
 }
 
 /** TipoServicio de las tarifas ACTIVAS del contrato — es la fuente real de "qué está contratado", no una fotografía guardada en el canal. */
-async function getActiveContractServiceTypes(contratoId) {
+/**
+ * fechaIso (opcional): solo cuentan las tarifas que ya empezaron a esa fecha. Un precio que empieza en el futuro
+ * (ej. Colación administrativa MECAMIN desde 01-12) no se ofrece antes. Las tarifas ya vencidas NO se filtran aquí,
+ * para no quitarle servicios a contratos con fechas antiguas que siguen en uso.
+ */
+async function getActiveContractServiceTypes(contratoId, fechaIso) {
   // Activo se filtra en JS, no en el OData de Graph: evita la ambiguedad de si un Yes/No
   // de SharePoint se representa como true/false o 1/0 al filtrar via Graph.
   const items = await getListItems(LISTS.contractRates, `filter=fields/ContratoId eq ${contratoId}&top=500`);
-  return Array.from(new Set(items.filter((item) => item.fields.Activo).map((item) => item.fields.TipoServicio)));
+  return Array.from(new Set(items
+    .filter((item) => item.fields.Activo)
+    .filter((item) => !fechaIso || !item.fields.VigenciaDesde || String(item.fields.VigenciaDesde).slice(0, 10) <= fechaIso)
+    .map((item) => item.fields.TipoServicio)));
 }
 
 /** La solicitud OFICIAL vigente hoy para esa fecha/servicio, si existe (no cuenta 'Extraordinaria pendiente' — igual que en el ERP). */

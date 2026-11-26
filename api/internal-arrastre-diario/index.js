@@ -106,7 +106,7 @@ module.exports = async function (context, req) {
       // Sin DiasServicio definido, opera todos los días (compatibilidad con contratos existentes).
       if (!operatesOnWeekday(contract.fields.DiasServicio, manana)) continue;
 
-      const activeServiceTypes = await getActiveContractServiceTypes(fields.ContratoId);
+      const activeServiceTypes = await getActiveContractServiceTypes(fields.ContratoId, manana);
       const permitidos = authorizedServices(fields.Modalidad, activeServiceTypes, fields.ExcepcionesServicios);
       // Formulario por horario (ej. Mecamin desde 01-12): solo sus servicios, y TODOS se sugieren por bloque horario.
       const porHorario = horarioFormFor(contract.fields.FormularioPorHorario, manana);

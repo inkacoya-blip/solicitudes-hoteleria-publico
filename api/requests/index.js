@@ -121,7 +121,7 @@ module.exports = async function (context, req) {
       return;
     }
 
-    const activeServiceTypes = await getActiveContractServiceTypes(fields.ContratoId);
+    const activeServiceTypes = await getActiveContractServiceTypes(fields.ContratoId, fechaServicio);
     const permitted = authorizedServices(fields.Modalidad, activeServiceTypes, fields.ExcepcionesServicios);
 
     const HORARIO_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;

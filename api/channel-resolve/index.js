@@ -47,7 +47,7 @@ module.exports = async function (context, req) {
 
     const [clienteNombre, activeServiceTypes, contract] = await Promise.all([
       getClientName(fields.ClienteId),
-      getActiveContractServiceTypes(fields.ContratoId),
+      getActiveContractServiceTypes(fields.ContratoId, chileTomorrow(new Date())),
       getContract(fields.ContratoId)
     ]);
     const permitidos = authorizedServices(fields.Modalidad, activeServiceTypes, fields.ExcepcionesServicios);
