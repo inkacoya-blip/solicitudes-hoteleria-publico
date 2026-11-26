@@ -129,10 +129,11 @@ module.exports = async function (context, req) {
 
           for (const block of priorBlocks) {
             const horario = block.fields.HoraServicio || undefined;
-            const yaExisteBloque = await hasOfficialRequestForDateAndHorario(fields.ContratoId, servicio, horario, manana);
+            const grupo = block.fields.GrupoServicio || undefined;
+            const yaExisteBloque = await hasOfficialRequestForDateAndHorario(fields.ContratoId, servicio, horario, manana, grupo);
             if (yaExisteBloque) continue;
 
-            const claveFila = `arrastre|${channel.id}|${manana}|${servicio}|${horario || ''}`;
+            const claveFila = `arrastre|${channel.id}|${manana}|${servicio}|${horario || ''}${grupo ? `|${grupo}` : ''}`;
             try {
               await createServiceRequest({
                 Title: claveFila,
@@ -142,6 +143,7 @@ module.exports = async function (context, req) {
                 FechaServicio: manana,
                 TipoServicio: servicio,
                 HoraServicio: horario,
+                ...(grupo ? { GrupoServicio: grupo } : {}),
                 CantidadOficial: block.fields.CantidadOficial,
                 OrigenSolicitud: 'Proyección automática',
                 EstadoSolicitud: 'Arrastre automático',

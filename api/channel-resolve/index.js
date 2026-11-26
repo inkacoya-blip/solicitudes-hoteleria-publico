@@ -56,7 +56,8 @@ module.exports = async function (context, req) {
     const servicios = porHorario ? horarioFormServices(porHorario, permitidos) : permitidos;
     const etiquetas = {};
     const horariosSugeridos = {};
-    if (porHorario) porHorario.servicios.forEach((s) => { etiquetas[s.tipo] = s.nombre; horariosSugeridos[s.tipo] = s.horas; });
+    const gruposPorServicio = {};
+    if (porHorario) porHorario.servicios.forEach((s) => { etiquetas[s.tipo] = s.nombre; horariosSugeridos[s.tipo] = s.horas; if (s.grupos.length > 0) gruposPorServicio[s.tipo] = s.grupos; });
 
     sendJson(context, 200, {
       ok: true,
@@ -66,6 +67,7 @@ module.exports = async function (context, req) {
       porHorario: Boolean(porHorario),
       etiquetas,
       horariosSugeridos,
+      gruposPorServicio,
       horaCierre: fields.HoraCierre || '18:00',
       requierePin: Boolean(fields.PinHash && fields.PinSalt),
       // Para armar la plantilla de Excel de ESTE cliente: su contrato, su plazo y sus días de servicio.

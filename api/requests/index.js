@@ -1,7 +1,7 @@
 const { hashToken, verifySession } = require('../shared/hash');
 const { isWithinDeadline, chileWallClock } = require('../shared/time');
 const { authorizedServices, isColacion } = require('../shared/serviceCatalog');
-const { horarioFormFor } = require('../shared/horarioForm');
+const { horarioFormFor, horarioFormGroups } = require('../shared/horarioForm');
 const { sendJson } = require('../shared/respond');
 const {
   findChannelByTokenHash,
@@ -127,7 +127,8 @@ module.exports = async function (context, req) {
     const HORARIO_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
     // Contrato con formulario por horario (ej. Mecamin desde 01-12): TODOS los servicios llegan por bloque horario.
     const contract = await getContract(fields.ContratoId);
-    const porHorario = Boolean(horarioFormFor(contract && contract.fields.FormularioPorHorario, fechaServicio));
+    const porHorarioConfig = horarioFormFor(contract && contract.fields.FormularioPorHorario, fechaServicio);
+    const porHorario = Boolean(porHorarioConfig);
     const usaBloques = (tipo) => isColacion(tipo) || porHorario;
     const cleanServices = [];
     for (const item of servicios) {
@@ -147,6 +148,13 @@ module.exports = async function (context, req) {
         sendJson(context, 200, GENERIC_INVALID);
         return;
       }
+      // Grupo del bloque (ej. P&P): uno de los configurados para ese servicio; si el servicio tiene grupos, es obligatorio.
+      const gruposServicio = horarioFormGroups(porHorarioConfig, tipoServicio);
+      const grupoRaw = typeof (item && item.grupo) === 'string' ? item.grupo.trim() : '';
+      if (gruposServicio.length > 0 && cantidad > 0 && !gruposServicio.includes(grupoRaw)) {
+        sendJson(context, 200, { ok: false, message: 'Elige el grupo en cada bloque con cantidad.' });
+        return;
+      }
       if (horarioRaw && !HORARIO_PATTERN.test(horarioRaw)) {
         await logRejectedAttempt(channel.id, fields.Codigo, 'Validación de datos inválida');
         sendJson(context, 200, GENERIC_INVALID);
@@ -157,6 +165,7 @@ module.exports = async function (context, req) {
           tipoServicio,
           cantidad,
           horario: horarioRaw || undefined,
+          grupo: gruposServicio.length > 0 ? grupoRaw : undefined,
           observacion: observacionRaw || undefined
         });
       }
@@ -175,11 +184,11 @@ module.exports = async function (context, req) {
     const contratoServicio = (contract && contract.fields.ContratoServicio) || (await getContractServiceLabel(fields.ContratoId)) || '';
     const fechaRecepcionIso = now.toISOString();
 
-    for (const { tipoServicio, cantidad, horario, observacion } of cleanServices) {
+    for (const { tipoServicio, cantidad, horario, grupo, observacion } of cleanServices) {
       // El horario entra en la clave: para Colación, varios bloques del mismo día+servicio no
       // se reemplazan entre sí, cada uno es su propia fila. Para el resto (horario vacío), la
       // clave queda exactamente igual que antes.
-      const claveFila = `${channel.id}|${submissionId}|${fechaServicio}|${tipoServicio}|${horario || ''}`;
+      const claveFila = `${channel.id}|${submissionId}|${fechaServicio}|${tipoServicio}|${horario || ''}${grupo ? `|${grupo}` : ''}`;
       // Chequeo antes de escribir: evita una llamada innecesaria en el caso normal. La
       // garantía real contra duplicados es la columna ClaveFila con EnforceUniqueValues
       // en SharePoint — si dos envíos llegan casi juntos, SharePoint rechaza el segundo.
@@ -189,7 +198,7 @@ module.exports = async function (context, req) {
       // Un reemplazo nunca sobrescribe: solo se vincula al registro anterior para reconstruir el historial.
       // Para Colación, el reemplazo es por horario — reemplaza SU bloque, no los demás del día.
       const previous = tipoSolicitud === 'Reemplazo'
-        ? await findLatestRequestForReplacement(fields.ContratoId, tipoServicio, fechaServicio, horario)
+        ? await findLatestRequestForReplacement(fields.ContratoId, tipoServicio, fechaServicio, horario, grupo)
         : undefined;
 
       try {
@@ -201,6 +210,7 @@ module.exports = async function (context, req) {
           FechaServicio: fechaServicio,
           TipoServicio: tipoServicio,
           HoraServicio: horario,
+          ...(grupo ? { GrupoServicio: grupo } : {}),
           CantidadOficial: cantidad,
           OrigenSolicitud: 'Cliente',
           EstadoSolicitud: estadoSolicitud,

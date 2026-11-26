@@ -58,13 +58,14 @@ async function hasOfficialRequestForDate(contratoId, tipoServicio, fechaIso) {
 
 /** Solo Colación: si ESE horario específico ya tiene una solicitud oficial para esa fecha —
  * el resto de los horarios del mismo día puede seguir faltando y arrastrarse aparte. */
-async function hasOfficialRequestForDateAndHorario(contratoId, tipoServicio, horario, fechaIso) {
+async function hasOfficialRequestForDateAndHorario(contratoId, tipoServicio, horario, fechaIso, grupo) {
   const items = await getListItems(
     LISTS.serviceRequests,
     `filter=fields/ContratoId eq ${contratoId} and fields/TipoServicio eq '${tipoServicio}' and fields/EstadoSolicitud eq 'Oficial'&top=500`
   );
   return items.some((item) => (item.fields.FechaServicio || '').slice(0, 10) === fechaIso
-    && (item.fields.HoraServicio || '') === (horario || ''));
+    && (item.fields.HoraServicio || '') === (horario || '')
+    && (item.fields.GrupoServicio || '') === (grupo || ''));
 }
 
 /** Solo Colación: todos los bloques 'Oficial' (uno por horario) del día válido anterior más
@@ -143,14 +144,15 @@ async function findByClaveFila(claveFila) {
  * horario: solo relevante para Colación — sin esto, un reemplazo de UN bloque horario
  * encontraría (y "reemplazaría" en el historial) cualquier bloque del día, no el suyo.
  */
-async function findLatestRequestForReplacement(contratoId, tipoServicio, fechaServicio, horario) {
+async function findLatestRequestForReplacement(contratoId, tipoServicio, fechaServicio, horario, grupo) {
   const items = await getListItems(
     LISTS.serviceRequests,
     `filter=fields/ContratoId eq ${contratoId} and fields/TipoServicio eq '${tipoServicio}'&top=500`
   );
   const candidates = items.filter((item) => (item.fields.FechaServicio || '').slice(0, 10) === fechaServicio
     && item.fields.EstadoSolicitud !== 'Anulada'
-    && (item.fields.HoraServicio || '') === (horario || ''));
+    && (item.fields.HoraServicio || '') === (horario || '')
+    && (item.fields.GrupoServicio || '') === (grupo || ''));
   candidates.sort((a, b) => (b.fields.FechaRecepcion || '').localeCompare(a.fields.FechaRecepcion || ''));
   return candidates[0];
 }

@@ -274,6 +274,7 @@
       wrap.appendChild(el('p', { class: 'colacion-title', text: nombreServicio(servicio) }));
       // Horas sugeridas (las de la planilla del cliente): aparecen al escribir la hora y ya puestas en los primeros bloques.
       var sugeridas = horasSugeridas[servicio] || [];
+      var grupos = (data.gruposPorServicio && data.gruposPorServicio[servicio]) || [];
       var listId = 'horas-' + servicio.replace(/[^a-zA-Z0-9]/g, '-');
       if (sugeridas.length > 0) {
         var datalist = el('datalist', { id: listId });
@@ -290,16 +291,25 @@
         if (sugeridas.length > 0) horaInput.setAttribute('list', listId);
         var cantidadInput = el('input', { type: 'number', min: '0', step: '1', class: 'colacion-cantidad', 'aria-label': 'Cantidad — ' + servicio, value: '0' });
         var obsInput = el('input', { type: 'text', class: 'colacion-obs', 'aria-label': 'Observación — ' + servicio, placeholder: 'Observación (opcional)' });
+        // Grupo del bloque (ej. Colación MECAMIN: Operadores, Mantención, P&P, APR), si el contrato lo pide.
+        var grupoSelect = null;
+        if (grupos.length > 0) {
+          grupoSelect = el('select', { class: 'colacion-grupo', 'aria-label': 'Grupo — ' + nombreServicio(servicio) });
+          grupoSelect.appendChild(el('option', { value: '', text: 'Grupo…' }));
+          grupos.forEach(function (g) { grupoSelect.appendChild(el('option', { value: g, text: g })); });
+        }
         if (prefillBlock) {
           if (prefillBlock.horario) horaInput.value = prefillBlock.horario;
           if (prefillBlock.cantidad) cantidadInput.value = String(prefillBlock.cantidad);
           if (prefillBlock.observacion) obsInput.value = prefillBlock.observacion;
+          if (grupoSelect && prefillBlock.grupo) grupoSelect.value = prefillBlock.grupo;
         }
         row.appendChild(horaInput);
+        if (grupoSelect) row.appendChild(grupoSelect);
         row.appendChild(cantidadInput);
         row.appendChild(obsInput);
         blocksContainer.appendChild(row);
-        blocks.push({ hora: horaInput, cantidad: cantidadInput, observacion: obsInput });
+        blocks.push({ hora: horaInput, cantidad: cantidadInput, observacion: obsInput, grupo: grupoSelect });
       }
 
       var prefillBlocks = (prefill && prefill.servicios && prefill.servicios[servicio]) || [];
@@ -382,6 +392,7 @@
 
       var colacionSinHora = null;
       var horaRepetida = null;
+      var grupoFaltante = null;
       Object.keys(colacionBlocksByServicio).forEach(function (servicio) {
         var horasUsadas = {};
         colacionBlocksByServicio[servicio].forEach(function (block) {
@@ -390,12 +401,17 @@
           var horario = block.hora.value.trim();
           // Las colaciones siempre llevan hora; en el formulario por horario, una comida puede ir sin hora (un solo bloque).
           if (!horario && isColacion(servicio)) { colacionSinHora = servicio; return; }
-          if (horasUsadas[horario]) { horaRepetida = nombreServicio(servicio) + (horario ? ' ' + horario : ' sin hora'); return; }
-          horasUsadas[horario] = true;
+          var grupo = block.grupo ? block.grupo.value : '';
+          if (block.grupo && !grupo) { grupoFaltante = servicio; return; }
+          // Dos grupos pueden pedir a la misma hora (ej. 06:30 Mantención y 06:30 P&P); el mismo grupo dos veces, no.
+          var clave = horario + '|' + grupo;
+          if (horasUsadas[clave]) { horaRepetida = nombreServicio(servicio) + (horario ? ' ' + horario : ' sin hora') + (grupo ? ' ' + grupo : ''); return; }
+          horasUsadas[clave] = true;
           servicios.push({
             tipoServicio: servicio,
             cantidad: cantidad,
             horario: horario || undefined,
+            grupo: grupo || undefined,
             observacion: block.observacion.value.trim() || undefined
           });
         });
@@ -403,6 +419,10 @@
 
       if (colacionSinHora) {
         renderMessage(messageBox, 'Indica la hora en cada bloque de ' + nombreServicio(colacionSinHora) + ' que tenga cantidad mayor a cero.', 'error');
+        return;
+      }
+      if (grupoFaltante) {
+        renderMessage(messageBox, 'Elige el grupo en cada bloque de ' + nombreServicio(grupoFaltante) + ' que tenga cantidad mayor a cero.', 'error');
         return;
       }
       if (horaRepetida) {
@@ -820,7 +840,7 @@
           rows.forEach(function (s) {
             var meta = STATUS_META[s.estado] || { color: 'gris', label: s.estado };
             var row = el('tr', {});
-            row.appendChild(el('td', { text: nombreServicio(s.tipoServicio) + (s.horario ? ' · ' + s.horario : '') }));
+            row.appendChild(el('td', { text: nombreServicio(s.tipoServicio) + (s.horario ? ' · ' + s.horario : '') + (s.grupo ? ' · ' + s.grupo : '') }));
             row.appendChild(el('td', { text: String(s.cantidad) }));
             row.appendChild(el('td', { text: s.observacion || '—' }));
             var statusCell = el('td', {});
@@ -839,7 +859,7 @@
         vigentes.forEach(function (s) {
           if (s.estado !== 'reemplazada' && s.estado !== 'no-aceptada') {
             if (!vigentesParaReemplazo[s.tipoServicio]) vigentesParaReemplazo[s.tipoServicio] = [];
-            vigentesParaReemplazo[s.tipoServicio].push({ cantidad: s.cantidad, horario: s.horario, observacion: s.observacion });
+            vigentesParaReemplazo[s.tipoServicio].push({ cantidad: s.cantidad, horario: s.horario, grupo: s.grupo, observacion: s.observacion });
           }
         });
 

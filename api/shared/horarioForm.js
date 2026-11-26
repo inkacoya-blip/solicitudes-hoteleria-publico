@@ -17,7 +17,9 @@ function parseHorarioForm(json) {
       .map((s) => ({
         tipo: s.tipo.trim(),
         nombre: typeof s.nombre === 'string' && s.nombre.trim() !== '' ? s.nombre.trim() : s.tipo.trim(),
-        horas: Array.isArray(s.horas) ? s.horas.filter((h) => typeof h === 'string' && HORA.test(h)) : []
+        horas: Array.isArray(s.horas) ? s.horas.filter((h) => typeof h === 'string' && HORA.test(h)) : [],
+        // Grupos que se eligen en cada bloque (ej. Colación MECAMIN: Operadores, Mantención, P&P, APR).
+        grupos: Array.isArray(s.grupos) ? s.grupos.filter((g) => typeof g === 'string' && g.trim() !== '').map((g) => g.trim()) : []
       }));
     if (servicios.length === 0) return null;
     const desde = typeof parsed.desde === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.desde) ? parsed.desde : '';
@@ -40,4 +42,10 @@ function horarioFormServices(config, permitted) {
   return config.servicios.filter((s) => permitted.includes(s.tipo)).map((s) => s.tipo);
 }
 
-module.exports = { parseHorarioForm, horarioFormFor, horarioFormServices };
+/** Grupos configurados para un servicio ([] = sin grupos). */
+function horarioFormGroups(config, tipo) {
+  const servicio = config && config.servicios.find((s) => s.tipo === tipo);
+  return servicio ? servicio.grupos : [];
+}
+
+module.exports = { parseHorarioForm, horarioFormFor, horarioFormServices, horarioFormGroups };

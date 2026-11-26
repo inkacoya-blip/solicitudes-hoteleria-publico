@@ -119,6 +119,9 @@ textarea { min-height: 70px; resize: vertical; }
   gap: 6px;
 }
 .colacion-block input { margin: 0; }
+/* Con grupo (ej. Colación MECAMIN): hora · grupo · cantidad · observación. */
+.colacion-block:has(.colacion-grupo) { grid-template-columns: 90px 120px 70px 1fr; }
+.colacion-grupo { margin: 0; padding: 8px 6px; font-size: 0.92rem; }
 .colacion-hora, .colacion-cantidad, .colacion-obs { padding: 8px 8px; font-size: 0.92rem; }
 .colacion-add { margin: 10px 0 4px; width: auto; padding: 8px 14px; font-size: 0.85rem; }
 

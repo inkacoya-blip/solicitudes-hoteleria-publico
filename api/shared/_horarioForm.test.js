@@ -1,11 +1,11 @@
 const assert = require('assert');
-const { horarioFormFor, horarioFormServices } = require('./horarioForm');
+const { horarioFormFor, horarioFormServices, horarioFormGroups } = require('./horarioForm');
 
 const json = JSON.stringify({
   desde: '2026-12-01',
   servicios: [
     { tipo: 'Desayuno', horas: ['06:30', '07:00'] },
-    { tipo: 'Colación hídrica', nombre: 'Colación MECAMIN', horas: ['06:30', 'mal'] },
+    { tipo: 'Colación hídrica', nombre: 'Colación MECAMIN', horas: ['06:30', 'mal'], grupos: ['Operadores', 'P&P', ''] },
     { tipo: 'Colación', nombre: 'Colación administrativa MECAMIN', horas: [] },
     { tipo: 'Cena hipocalórica', horas: ['19:00'] }
   ]
@@ -21,6 +21,8 @@ assert.deepStrictEqual(
   ['Desayuno', 'Colación hídrica', 'Colación'],
   'solo los configurados y autorizados; la Colación sándwich sale'
 );
+assert.deepStrictEqual(horarioFormGroups(config, 'Colación hídrica'), ['Operadores', 'P&P'], 'grupos sin vacíos');
+assert.deepStrictEqual(horarioFormGroups(config, 'Desayuno'), [], 'desayuno sin grupos');
 assert.strictEqual(horarioFormFor('no es json', '2026-12-01'), null);
 assert.strictEqual(horarioFormFor(undefined, '2026-12-01'), null);
 
