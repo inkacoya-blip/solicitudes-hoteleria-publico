@@ -17,7 +17,10 @@ const LISTS = {
   incidents: 'ICH_INCIDENCIAS',
   supplies: 'ICH_SOLICITUDES_INSUMOS',
   bpmFormats: 'ICH_BPM_FORMATOS',
-  bpmRecords: 'ICH_BPM_REGISTROS'
+  bpmRecords: 'ICH_BPM_REGISTROS',
+  assets: 'ICH_ACTIVOS',
+  maintenancePlans: 'ICH_PLANES_MANTENCION_PREVENTIVA',
+  workOrders: 'ICH_INCIDENCIAS'
 };
 
 const num = (value) => {
@@ -128,6 +131,27 @@ function listBpmFormats() {
   return getListItems(LISTS.bpmFormats, 'top=200');
 }
 
+/** Un equipo (o cambro, o vehículo) por su código impreso en el QR. */
+async function getAssetByCode(code) {
+  const items = await getListItems(LISTS.assets, `filter=fields/Codigo eq '${safeText(code)}'&top=1`);
+  return items[0];
+}
+
+/** Los cambros en uso (para el traslado a faena). */
+function listCambros() {
+  return getListItems(LISTS.assets, "filter=fields/Categoria eq 'Cambro'&top=300");
+}
+
+/** Planes de mantención preventiva de un equipo (los activos y los apagados; el filtro fino se hace en el servidor). */
+function listMaintenancePlansOfAsset(assetId) {
+  return getListItems(LISTS.maintenancePlans, `filter=fields/ActivoId eq ${num(assetId)}&top=50`);
+}
+
+/** Aviso de falla de un equipo: queda como incidencia (orden de trabajo) en el ERP. */
+function createEquipmentIncident(fields) {
+  return createListItem(LISTS.workOrders, fields);
+}
+
 function listBpmRecordsByDay(dia) {
   return getListItems(LISTS.bpmRecords, `filter=fields/Dia eq ${num(dia)}&top=999`);
 }
@@ -140,6 +164,10 @@ module.exports = {
   LISTS,
   listBpmFormats,
   listBpmRecordsByDay,
+  getAssetByCode,
+  listCambros,
+  listMaintenancePlansOfAsset,
+  createEquipmentIncident,
   createBpmRecord,
   findStaffByCode,
   getStaffById,

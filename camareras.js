@@ -23,6 +23,7 @@
     draft: null,
     target: parseTarget(),
     bpmTarget: parseBpmTarget(),
+    equipoTarget: parseEquipoTarget(),
     bpm: null,
     bpmFecha: null,
     notice: null
@@ -37,6 +38,12 @@
   function parseBpmTarget() {
     var match = /^#\/bpm(?:\/([A-Za-z0-9-]+))?$/.exec(window.location.hash || '');
     return match ? { codigo: match[1] || null } : null;
+  }
+
+  /** El QR de un equipo (cámara, cambro, vehículo…) trae «#/eq/<código del equipo>». */
+  function parseEquipoTarget() {
+    var match = /^#\/eq\/([A-Za-z0-9-]{1,40})$/.exec(window.location.hash || '');
+    return match ? { codigo: match[1] } : null;
   }
 
   function loadStoredSession() {
@@ -192,6 +199,7 @@
   }
 
   function start() {
+    if (state.equipoTarget && state.persona.bpm) { var wantedEq = state.equipoTarget.codigo; state.equipoTarget = null; state.bpmTarget = null; return openEquipo(wantedEq); }
     if (state.persona.soloBpm) { var onlyCode = state.bpmTarget ? state.bpmTarget.codigo : null; state.bpmTarget = null; return openBpm(null, onlyCode); }
     return api('houses').then(function (data) {
       if (!data.ok) { showNotice('error', data.message || 'No fue posible cargar las casas.'); return; }
@@ -776,6 +784,143 @@
     }).catch(failMessage);
   }
 
+  /* ---------- QR de equipo: qué es, y anotar temperatura o limpieza ---------- */
+
+  function openEquipo(codigo) {
+    return api('equipo-scan', { codigo: codigo }).then(function (data) {
+      if (!data.ok) {
+        showNotice('error', data.message || 'No fue posible abrir el equipo.');
+        if (!state.house && !state.bpm) renderHouses();
+        return;
+      }
+      renderEquipo(data);
+    }).catch(failMessage);
+  }
+
+  function renderEquipo(data) {
+    var equipo = data.equipo;
+    clearScreen();
+    app.appendChild(topBar(function () { state.bpm = null; state.house = null; start(); }, '‹ Volver'));
+    var body = el('div', { class: 'form-body' });
+    if (state.notice) { body.appendChild(el('div', { class: 'message ' + state.notice.type, text: state.notice.text })); state.notice = null; }
+    body.appendChild(el('h2', { text: equipo.nombre }));
+    body.appendChild(el('p', { class: 'hk-help', text: [equipo.categoria, equipo.codigo, [equipo.marca, equipo.modelo].filter(Boolean).join(' ')].filter(Boolean).join(' · ') }));
+    if (equipo.estado === 'Guardado') body.appendChild(el('div', { class: 'message', text: 'Este equipo está guardado en bodega. Antes de usarlo: límpialo y desinféctalo (abajo) y avisa a la jefa de operaciones para ponerlo en servicio.' }));
+    else if (equipo.estado !== 'Operativo') body.appendChild(el('div', { class: 'message error', text: 'Este equipo está «' + equipo.estado + '». Avisa a la jefa de operaciones antes de usarlo.' }));
+    var botones = [['Anotar temperatura', data.temperatura], ['Limpieza y desinfección', data.limpieza]];
+    (data.otros || []).forEach(function (format) { botones.push([format.nombre, format]); });
+    botones.forEach(function (pair) {
+      var format = pair[1];
+      if (!format) return;
+      var card = el('div', { class: 'hk-room hk-bpm-card' }, [
+        el('div', { class: 'hk-bpm-head' }, [el('strong', { text: pair[0] }), el('span', { class: 'hk-badge', text: format.hechos.length > 0 ? 'Hoy: ' + format.hechos.length : 'Hoy: nada aún' })])
+      ]);
+      format.hechos.forEach(function (item) {
+        card.appendChild(el('p', { class: 'hk-help', text: (item.resultado === 'Fuera de límite' ? '⚠ ' : '✓ ') + [item.turno, item.punto].filter(Boolean).join(' · ') + ' — ' + item.resultado }));
+      });
+      card.appendChild(el('button', { type: 'button', class: 'hk-secondary', text: pair[0], onclick: function () { state.bpm = { fecha: data.hoy }; openBpmSheet(format, { equipo: equipo }); } }));
+      body.appendChild(card);
+    });
+    if (data.traslado && data.traslado.cambros.length > 0) {
+      body.appendChild(el('button', { type: 'button', text: 'Traslado a faena (temperatura de los cambros)', onclick: function () { openTraslado(equipo, data.traslado); } }));
+    }
+    if (data.mantencion) {
+      body.appendChild(el('p', { class: data.mantencion.vencida ? 'message error' : 'hk-help', text: (data.mantencion.vencida ? 'Mantención VENCIDA: ' : 'Próxima mantención: ') + data.mantencion.fecha + (data.mantencion.descripcion ? ' · ' + data.mantencion.descripcion : '') }));
+    }
+    body.appendChild(el('button', { type: 'button', class: 'hk-secondary', text: 'Avisar falla', onclick: function () { openEquipoFalla(equipo); } }));
+    app.appendChild(body);
+  }
+
+  /** Traslado a faena desde el QR del vehículo: una temperatura por cambro y un solo guardado. */
+  function openTraslado(vehiculo, traslado) {
+    var submissionId = newSubmissionId();
+    var momento = 'Salida';
+    var message = el('div', { class: 'message', hidden: true });
+    function showError(text) { message.textContent = text; message.className = 'message error'; message.hidden = false; }
+    var momentoRow = el('div', { class: 'hk-seg' });
+    ['Salida', 'Llegada'].forEach(function (option) {
+      momentoRow.appendChild(el('button', {
+        type: 'button', class: 'hk-seg-btn' + (option === momento ? ' hk-seg-on' : ''), text: option,
+        onclick: function (event) {
+          momento = option;
+          Array.prototype.forEach.call(momentoRow.children, function (child) { child.className = 'hk-seg-btn' + (child === event.currentTarget ? ' hk-seg-on' : ''); });
+        }
+      }));
+    });
+    var destino = el('input', { type: 'text', placeholder: 'A qué faena va (ej. Faena Norte)', maxlength: '60' });
+    var puntos = traslado.formato.puntos;
+    var rows = traslado.cambros.map(function (cambro) {
+      var tipo = el('select', { 'aria-label': 'Frío o caliente' });
+      puntos.forEach(function (point) { tipo.appendChild(el('option', { value: point.nombre, text: point.nombre.replace(' en el traslado', '') + ' (' + limitsText(point) + ')' })); });
+      var temp = el('input', { type: 'text', inputmode: 'decimal', placeholder: '°C', maxlength: '8' });
+      var obs = el('input', { type: 'text', placeholder: 'Qué se hizo (solo si quedó fuera de límite)', maxlength: '300' });
+      return { cambro: cambro, tipo: tipo, temp: temp, obs: obs, box: el('div', { class: 'hk-room' }, [el('strong', { text: cambro.nombre }), tipo, temp, obs]) };
+    });
+    var photo = el('input', { type: 'file', id: 'hk-tr-photo', accept: 'image/*', capture: 'environment' });
+    var send = el('button', { type: 'button', text: 'Guardar el traslado' });
+    send.addEventListener('click', function () {
+      if (!destino.value.trim()) return showError('Escribe a qué faena va.');
+      var lecturas = rows.filter(function (row) { return row.temp.value.trim() !== ''; }).map(function (row) {
+        return { codigo: row.cambro.codigo, punto: row.tipo.value, temperatura: row.temp.value, observacion: row.obs.value };
+      });
+      if (lecturas.length === 0) return showError('Anota la temperatura de los cambros que van (los que no van, déjalos en blanco).');
+      var file = photo.files && photo.files[0];
+      send.disabled = true;
+      send.textContent = 'Enviando…';
+      (file ? compressImage(file) : Promise.resolve({ base64: '', contentType: '' })).then(function (image) {
+        return api('traslado-record', { codigo: vehiculo.codigo, momento: momento, destino: destino.value, lecturas: lecturas, submissionId: submissionId, fotoBase64: image.base64, fotoContentType: image.contentType });
+      }).then(function (result) {
+        if (!result.ok) { showError(result.message || 'No fue posible guardar el traslado.'); send.disabled = false; send.textContent = 'Guardar el traslado'; return; }
+        closeSheet();
+        state.notice = { type: result.fuera ? 'error' : 'success', text: result.message };
+        return openEquipo(vehiculo.codigo);
+      }).catch(function (error) {
+        send.disabled = false;
+        send.textContent = 'Guardar el traslado';
+        if (error && error.message === 'sesion') return;
+        showError('No se pudo enviar. Revisa la señal e inténtalo de nuevo.');
+      });
+    });
+    var content = [el('label', { text: 'Es la' }), momentoRow, destino, el('p', { class: 'hk-help', text: 'Anota la temperatura de cada cambro que va. Los que no van, déjalos en blanco.' })];
+    rows.forEach(function (row) { content.push(row.box); });
+    content.push(el('label', { for: 'hk-tr-photo', text: 'Foto (obligatoria solo si algún cambro quedó fuera de límite)' }), photo, message, send);
+    openSheet('Traslado a faena · ' + vehiculo.nombre, content);
+  }
+
+  function openEquipoFalla(equipo) {
+    var submissionId = newSubmissionId();
+    var message = el('div', { class: 'message', hidden: true });
+    function showError(text) { message.textContent = text; message.className = 'message error'; message.hidden = false; }
+    var texto = el('textarea', { placeholder: 'Qué le pasa al equipo', maxlength: '2000' });
+    var sinEquipo = el('input', { type: 'checkbox' });
+    var photo = el('input', { type: 'file', id: 'hk-eq-photo', accept: 'image/*', capture: 'environment' });
+    var send = el('button', { type: 'button', text: 'Avisar falla' });
+    send.addEventListener('click', function () {
+      if (texto.value.trim().length < 5) return showError('Cuenta qué le pasa al equipo.');
+      var file = photo.files && photo.files[0];
+      send.disabled = true;
+      send.textContent = 'Enviando…';
+      (file ? compressImage(file) : Promise.resolve({ base64: '', contentType: '' })).then(function (image) {
+        return api('equipo-falla', { codigo: equipo.codigo, descripcion: texto.value, afectaContinuidad: sinEquipo.checked, submissionId: submissionId, fotoBase64: image.base64, fotoContentType: image.contentType });
+      }).then(function (result) {
+        if (!result.ok) { showError(result.message || 'No fue posible avisar la falla.'); send.disabled = false; send.textContent = 'Avisar falla'; return; }
+        closeSheet();
+        state.notice = { type: 'success', text: result.message };
+        return openEquipo(equipo.codigo);
+      }).catch(function (error) {
+        send.disabled = false;
+        send.textContent = 'Avisar falla';
+        if (error && error.message === 'sesion') return;
+        showError('No se pudo enviar. Revisa la señal e inténtalo de nuevo.');
+      });
+    });
+    openSheet('Avisar falla · ' + equipo.nombre, [
+      texto,
+      el('label', { class: 'hk-check' }, [sinEquipo, el('span', { text: ' No puedo trabajar sin este equipo' })]),
+      el('label', { for: 'hk-eq-photo', text: 'Foto (opcional)' }), photo, message, send
+    ]);
+  }
+
   function bpmState(format) {
     var done = format.hechos.length;
     if (format.tomas === 0) return done > 0 ? done + ' hoja(s) subida(s)' : 'Solo cuando ocurre';
@@ -795,7 +940,7 @@
     var picker = el('input', { type: 'date', value: data.fecha, max: data.hoy });
     picker.addEventListener('change', function () { if (picker.value) { state.notice = null; openBpm(picker.value, null); } });
     body.appendChild(el('div', { class: 'hk-row' }, [picker]));
-    body.appendChild(el('p', { class: 'hk-help', text: 'Las hojas siguen en papel (o plastificadas). Aquí subes la foto de cada hoja y anotas la temperatura mínima y máxima que se leyó, o «fuera de límite».' }));
+    body.appendChild(el('p', { class: 'hk-help', text: 'Las hojas diarias se llenan aquí mismo: anota la temperatura que marca el termómetro (o «cumple») y listo, sin foto. La foto solo se pide si algo quedó fuera de límite o si la hoja es periódica (plagas, mensual, trimestral).' }));
 
     var pending = data.formatos.filter(function (item) { return item.tomas > 0 && item.hechos.length < item.tomas; }).length;
     body.appendChild(el('p', { class: 'hk-progress', text: pending === 0 ? 'No falta ninguna hoja de este día.' : 'Faltan hojas de ' + pending + ' formato(s).' }));
@@ -828,7 +973,7 @@
     return parts.join(' · ');
   }
 
-  function openBpmSheet(format) {
+  function openBpmSheet(format, ctx) {
     var data = state.bpm;
     var submissionId = newSubmissionId();
     var turno = '';
@@ -853,7 +998,8 @@
     content.push(el('label', { text: 'Turno (si la hoja lo pide)' }), turnoRow);
 
     var lugar = el('input', { type: 'text', placeholder: 'Equipo o lugar (ej. Cámara 1, Mantenedor)', maxlength: '120' });
-    content.push(lugar);
+    // Con el QR de un equipo el equipo ya está elegido: no se escribe.
+    if (!(ctx && ctx.equipo)) content.push(lugar);
 
     var punto = null;
     var minimo = null;
@@ -865,10 +1011,10 @@
         var limits = limitsText(item);
         punto.appendChild(el('option', { value: item.nombre, text: item.nombre + (limits ? ' (' + limits + ')' : '') }));
       });
-      minimo = el('input', { type: 'text', inputmode: 'decimal', placeholder: 'Temperatura MÍNIMA que se leyó (°C)', maxlength: '8' });
-      maximo = el('input', { type: 'text', inputmode: 'decimal', placeholder: 'Temperatura MÁXIMA que se leyó (°C)', maxlength: '8' });
+      minimo = el('input', { type: 'text', inputmode: 'decimal', placeholder: 'Temperatura que marca (°C)', maxlength: '8' });
+      maximo = null;
       fuera = el('input', { type: 'checkbox' });
-      content.push(el('label', { text: 'Qué se midió' }), punto, minimo, maximo,
+      content.push(el('label', { text: 'Qué se midió' }), punto, minimo,
         el('label', { class: 'hk-check' }, [fuera, el('span', { text: ' Fuera de límite (sin anotar números)' })]));
     } else {
       var cumpleRow = el('div', { class: 'hk-seg' });
@@ -887,23 +1033,24 @@
     var observacion = el('textarea', { placeholder: 'Qué se hizo si algo quedó fuera de límite (obligatorio en ese caso)', maxlength: '1000' });
     var photo = el('input', { type: 'file', id: 'hk-bpm-photo', accept: 'image/*', capture: 'environment' });
     var send = el('button', { type: 'button', text: 'Guardar la hoja' });
-    content.push(observacion, el('label', { for: 'hk-bpm-photo', text: 'Foto de la hoja (obligatoria)' }), photo, message, send);
+    content.push(observacion, el('label', { for: 'hk-bpm-photo', text: format.periodica ? 'Foto de la hoja (obligatoria)' : 'Foto de la hoja (solo si quedó fuera de límite)' }), photo, message, send);
 
     send.addEventListener('click', function () {
       var file = photo.files && photo.files[0];
-      if (!file) return showError('Saca una foto de la hoja.');
+      var esFuera = format.tipo === 'Temperatura' ? fuera.checked : cumple === false;
+      if (!file && (format.periodica || esFuera)) return showError(format.periodica ? 'Saca una foto de la hoja.' : 'Está fuera de límite: saca una foto de la hoja.');
       if (format.tipo !== 'Temperatura' && cumple === null) return showError('Indica si cumple o no cumple.');
       send.disabled = true;
       send.textContent = 'Enviando…';
-      compressImage(file).then(function (image) {
+      (file ? compressImage(file) : Promise.resolve({ base64: '', contentType: '' })).then(function (image) {
         var payload = {
-          codigo: format.codigo, fecha: data.fecha, turno: turno || undefined, lugar: lugar.value, observacion: observacion.value,
+          codigo: format.codigo, fecha: data.fecha, turno: turno || undefined, lugar: lugar.value, activoCodigo: ctx && ctx.equipo ? ctx.equipo.codigo : undefined, observacion: observacion.value,
           submissionId: submissionId, fotoBase64: image.base64, fotoContentType: image.contentType
         };
         if (format.tipo === 'Temperatura') {
           payload.punto = punto.value;
           payload.minimo = minimo.value;
-          payload.maximo = maximo.value;
+          payload.maximo = minimo.value;
           payload.fuera = fuera.checked;
         } else {
           payload.cumple = cumple;
@@ -913,6 +1060,7 @@
         if (!result.ok) { showError(result.message || 'No fue posible guardar la hoja.'); send.disabled = false; send.textContent = 'Guardar la hoja'; return; }
         closeSheet();
         state.notice = { type: result.fuera ? 'error' : 'success', text: result.message };
+        if (ctx && ctx.equipo) return openEquipo(ctx.equipo.codigo);
         return openBpm(data.fecha, null);
       }).catch(function (error) {
         send.disabled = false;

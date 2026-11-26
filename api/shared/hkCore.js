@@ -291,6 +291,7 @@ function parseBpmFormat(item) {
     area: String(fields.Area || ''),
     frecuencia: String(fields.Frecuencia || ''),
     tomas: Number(fields.TomasPorDia || 0),
+    periodoDias: Number(fields.PeriodoDias || 0),
     tipo: fields.Tipo === 'Temperatura' ? 'Temperatura' : 'Cumple',
     puntos,
     instruccion: String(fields.Instruccion || ''),
@@ -321,10 +322,13 @@ function evaluateBpm(format, input) {
   if (format.tipo === 'Temperatura') {
     const point = format.puntos.find((p) => p.nombre === input.punto);
     if (!point) return { ok: false, message: 'Elige qué se midió.' };
-    const min = toNumberOrUndefined(input.minimo);
-    const max = toNumberOrUndefined(input.maximo);
+    // El termómetro marca un solo valor: si llega solo uno (mínimo o máximo), se usa como la lectura.
+    const rawMin = toNumberOrUndefined(input.minimo);
+    const rawMax = toNumberOrUndefined(input.maximo);
+    const min = rawMin !== undefined ? rawMin : rawMax;
+    const max = rawMax !== undefined ? rawMax : rawMin;
     const manual = input.fuera === true;
-    if (!manual && (min === undefined || max === undefined)) return { ok: false, message: 'Anota la temperatura mínima y la máxima que se leyeron, o marca «Fuera de límite».' };
+    if (!manual && (min === undefined || max === undefined)) return { ok: false, message: 'Anota la temperatura que marca el termómetro, o marca «Fuera de límite».' };
     for (const value of [min, max]) {
       if (value !== undefined && (value < BPM_TEMP_MIN || value > BPM_TEMP_MAX)) return { ok: false, message: 'Esa temperatura no parece correcta. Revísala.' };
     }

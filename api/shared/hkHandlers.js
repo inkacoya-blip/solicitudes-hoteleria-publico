@@ -14,6 +14,14 @@ const core = require('./hkCore');
 const MAX_PIN_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000;
 const MAX_FOTO_BASE64_LENGTH = 6 * 1024 * 1024;
+/** Formato de «limpieza y desinfección de equipos»: se anota desde el QR de cada equipo. */
+const EQUIPMENT_CLEANING_FORMAT = 'ICH-FOR-01-F28';
+/** Formatos del vehículo de reparto y del traslado de alimentos a faena. */
+const VEHICLE_CHECK_FORMATS = ['ICH-FOR-01-F15', 'ICH-FOR-01-F16'];
+const TRANSFER_FORMAT = 'ICH-FOR-01-F01';
+const TRANSFER_MOMENTS = ['Salida', 'Llegada'];
+const ASSET_CODE = /^[A-Za-z0-9-]{1,40}$/;
+const BPM_ONLY = 'Los registros BPM los suben la supervisora y el personal de cocina, casino, bodega y reparto.';
 const CODE_PATTERN = /^[A-Z]{3}-\d{3,4}$/;
 const PIN_PATTERN = /^\d{6}$/;
 
@@ -89,6 +97,49 @@ function createHandlers(deps) {
         supervision: core.isSupervision(person.fields.Rol),
         bpm: core.canBpm(person.fields.Rol)
       }
+    };
+  }
+
+  /** Lo que ve el celular de un formato: sus puntos y las hojas que ya se subieron ese día. */
+  function formatView(format, done) {
+    return {
+      codigo: format.codigo,
+      nombre: format.nombre,
+      area: format.area,
+      frecuencia: format.frecuencia,
+      tomas: format.tomas,
+      periodica: format.periodoDias > 0,
+      tipo: format.tipo,
+      puntos: format.puntos,
+      instruccion: format.instruccion,
+      hechos: done.map((item) => ({
+        turno: item.fields.Turno || '',
+        punto: item.fields.Punto || '',
+        lugar: item.fields.Lugar || '',
+        resultado: item.fields.Resultado || '',
+        por: item.fields.RegistradoPor || ''
+      }))
+    };
+  }
+
+  /** Busca el equipo por el código del QR: el celular manda solo el código, nunca el nombre ni el punto de control. */
+  async function loadAsset(rawCode) {
+    const code = typeof rawCode === 'string' ? rawCode.trim() : '';
+    if (!ASSET_CODE.test(code)) return null;
+    const item = await repo.getAssetByCode(code);
+    if (!item || item.fields.Estado === 'De baja') return null;
+    const f = item.fields;
+    return {
+      id: Number(item.id),
+      establecimientoId: Number(f.EstablecimientoId || 0),
+      codigo: String(f.Codigo || ''),
+      nombre: String(f.Title || ''),
+      categoria: String(f.Categoria || ''),
+      estado: String(f.Estado || 'Operativo'),
+      marca: String(f.Marca || ''),
+      modelo: String(f.Modelo || ''),
+      punto: String(f.PuntoTemperatura || ''),
+      formatoTemperatura: String(f.FormatoTemperatura || 'ICH-FOR-01-F18')
     };
   }
 
@@ -555,6 +606,9 @@ function createHandlers(deps) {
 
     /* ---------- Registros BPM: la supervisora sube la foto de la hoja y anota mínima/máxima o «fuera de límite» ---------- */
 
+    /** Lo que ve el celular de un formato: sus puntos, y las hojas que ya se subieron ese día. */
+    // (función auxiliar más abajo: formatView)
+
     async bpmList(body) {
       const auth = await authenticate(body, { bpm: true });
       if (auth.error) return auth.error;
@@ -570,26 +624,178 @@ function createHandlers(deps) {
         ok: true,
         fecha,
         hoy: today,
-        formatos: formats.map((format) => {
-          const done = records.filter((item) => item.fields.CodigoFormato === format.codigo);
-          return {
-            codigo: format.codigo,
-            nombre: format.nombre,
-            area: format.area,
-            frecuencia: format.frecuencia,
-            tomas: format.tomas,
-            tipo: format.tipo,
-            puntos: format.puntos,
-            instruccion: format.instruccion,
-            hechos: done.map((item) => ({
-              turno: item.fields.Turno || '',
-              punto: item.fields.Punto || '',
-              lugar: item.fields.Lugar || '',
-              resultado: item.fields.Resultado || '',
-              por: item.fields.RegistradoPor || ''
-            }))
-          };
-        })
+        formatos: formats.map((format) => formatView(format, records.filter((item) => item.fields.CodigoFormato === format.codigo)))
+      };
+    },
+
+    /**
+     * El QR de un equipo (cámara, refrigerador, cambro, vehículo…) trae su código. Devuelve qué equipo es y qué se le puede anotar:
+     * temperatura (si el equipo tiene un punto de control) y limpieza y desinfección. El celular no decide nada: solo muestra.
+     */
+    async equipoScan(body) {
+      const auth = await authenticate(body, { bpm: true });
+      if (auth.error) return auth.error;
+      if (!auth.person.bpm) return { ok: false, message: BPM_ONLY };
+      const asset = await loadAsset(body.codigo);
+      if (!asset) return { ok: false, message: 'Ese equipo no existe o ya no está en uso. Avisa a la jefa de operaciones.' };
+      const today = core.chileToday(clock());
+      const formats = (await repo.listBpmFormats()).map(core.parseBpmFormat).filter((format) => format.activo && format.codigo !== '');
+      const records = (await repo.listBpmRecordsByDay(core.dayNumber(today))).filter((item) => item.fields.ActivoCodigo === asset.codigo);
+      const view = (format) => formatView(format, records.filter((item) => item.fields.CodigoFormato === format.codigo));
+      const tempFormat = asset.punto ? formats.find((format) => format.codigo === asset.formatoTemperatura && format.tipo === 'Temperatura') : undefined;
+      const cleanFormat = formats.find((format) => format.codigo === EQUIPMENT_CLEANING_FORMAT);
+      let temperatura = null;
+      // Un equipo guardado en bodega no se mide: primero se limpia, se desinfecta y se pone en servicio.
+      if (tempFormat && asset.estado !== 'Guardado') {
+        temperatura = view(tempFormat);
+        const point = tempFormat.puntos.find((item) => item.nombre === asset.punto);
+        temperatura.puntos = point ? [point] : tempFormat.puntos;
+      }
+      // Próxima mantención programada en el ERP (la más cercana de los planes activos de este equipo).
+      const plans = (await repo.listMaintenancePlansOfAsset(asset.id)).filter((plan) => plan.fields.Activo !== false && plan.fields.ProximaFecha);
+      plans.sort((a, b) => String(a.fields.ProximaFecha).localeCompare(String(b.fields.ProximaFecha)));
+      const nextPlan = plans[0];
+      const mantencion = nextPlan
+        ? { descripcion: String(nextPlan.fields.Descripcion || '').slice(0, 160), fecha: String(nextPlan.fields.ProximaFecha).slice(0, 10), vencida: String(nextPlan.fields.ProximaFecha).slice(0, 10) < today }
+        : null;
+      // El vehículo de reparto: sus controles (check list y sanitización) y el traslado de los cambros a la faena.
+      const otros = asset.categoria === 'Vehículo' ? VEHICLE_CHECK_FORMATS.map((code) => formats.find((format) => format.codigo === code)).filter(Boolean).map(view) : [];
+      let traslado = null;
+      if (asset.categoria === 'Vehículo') {
+        const transferFormat = formats.find((format) => format.codigo === TRANSFER_FORMAT);
+        if (transferFormat) {
+          const cambros = (await repo.listCambros()).filter((item) => item.fields.Estado === 'Operativo').sort((a, b) => String(a.fields.Codigo).localeCompare(String(b.fields.Codigo)));
+          traslado = { formato: view(transferFormat), cambros: cambros.map((item) => ({ codigo: String(item.fields.Codigo || ''), nombre: String(item.fields.Title || '') })) };
+        }
+      }
+      return {
+        ok: true,
+        hoy: today,
+        otros,
+        traslado,
+        mantencion,
+        equipo: { codigo: asset.codigo, nombre: asset.nombre, categoria: asset.categoria, estado: asset.estado, marca: asset.marca, modelo: asset.modelo },
+        temperatura,
+        limpieza: cleanFormat ? view(cleanFormat) : null
+      };
+    },
+
+    /** «Avisar falla» desde el QR de un equipo: crea la incidencia del equipo en el ERP, con foto si la hay. */
+    async equipoFalla(body) {
+      const auth = await authenticate(body, { bpm: true });
+      if (auth.error) return auth.error;
+      if (!auth.person.bpm) return { ok: false, message: BPM_ONLY };
+      const asset = await loadAsset(body.codigo);
+      if (!asset || !asset.establecimientoId) return { ok: false, message: 'Ese equipo no existe o ya no está en uso.' };
+      const descripcion = typeof body.descripcion === 'string' ? body.descripcion.trim().slice(0, 2000) : '';
+      if (descripcion.length < 5) return { ok: false, message: 'Cuenta qué le pasa al equipo (al menos unas palabras).' };
+      const submissionId = typeof body.submissionId === 'string' ? body.submissionId.trim().slice(0, 60) : '';
+      if (!submissionId) return { ok: false, message: 'No fue posible avisar la falla.' };
+      const fotoBase64 = typeof body.fotoBase64 === 'string' ? body.fotoBase64 : '';
+      if (fotoBase64.length > MAX_FOTO_BASE64_LENGTH) return { ok: false, message: 'La foto es demasiado grande. Inténtalo de nuevo.' };
+      const fotoContentType = typeof body.fotoContentType === 'string' ? body.fotoContentType : 'image/jpeg';
+      const today = core.chileToday(clock());
+      let fotoUrl = '';
+      if (fotoBase64) {
+        const path = `EquipoFotos/${today.slice(0, 7)}/${asset.codigo}-${today}-${Date.now()}-${submissionId}.${extensionFor(fotoContentType)}`;
+        fotoUrl = await uploadFile(path, Buffer.from(fotoBase64, 'base64'), fotoContentType);
+      }
+      const sinEquipo = body.afectaContinuidad === true;
+      try {
+        await repo.createEquipmentIncident({
+          Title: `${asset.codigo} · falla`.slice(0, 255),
+          EstablecimientoId: asset.establecimientoId,
+          Tipo: 'Equipamiento',
+          Descripcion: `[${asset.codigo} · ${asset.nombre}] ${descripcion}`,
+          ReportadoPor: auth.person.label,
+          Prioridad: sinEquipo ? 'Alta' : 'Media',
+          AfectaContinuidad: sinEquipo,
+          Estado: 'Reportado',
+          FotoUrl: fotoUrl,
+          CanalIngreso: 'Formulario externo',
+          CodigoCanal: asset.codigo,
+          ActivoCodigo: asset.codigo,
+          SubmissionId: submissionId
+        });
+      } catch (error) {
+        if (!isDuplicateValueError(error)) throw error;
+        // Doble toque: el aviso ya estaba guardado.
+      }
+      return { ok: true, message: `Falla avisada (${asset.codigo}). Le llegó a la jefa de operaciones.` };
+    },
+
+    /**
+     * Traslado de alimentos a faena desde el QR del vehículo: una temperatura por cada cambro, un solo guardado.
+     * Se valida todo antes de guardar nada: si un cambro quedó fuera de límite sin decir qué se hizo, no se guarda ninguno.
+     */
+    async trasladoRecord(body) {
+      const auth = await authenticate(body, { bpm: true });
+      if (auth.error) return auth.error;
+      if (!auth.person.bpm) return { ok: false, message: BPM_ONLY };
+      const vehicle = await loadAsset(body.codigo);
+      if (!vehicle || vehicle.categoria !== 'Vehículo') return { ok: false, message: 'Ese vehículo no existe o ya no está en uso.' };
+      const submissionId = typeof body.submissionId === 'string' ? body.submissionId.trim().slice(0, 50) : '';
+      if (!submissionId) return { ok: false, message: 'No fue posible registrar el traslado.' };
+      const momento = TRANSFER_MOMENTS.includes(body.momento) ? body.momento : '';
+      if (!momento) return { ok: false, message: 'Indica si es la salida o la llegada.' };
+      const destino = typeof body.destino === 'string' ? body.destino.trim().slice(0, 60) : '';
+      if (!destino) return { ok: false, message: 'Escribe a qué faena va.' };
+      const lecturas = Array.isArray(body.lecturas) ? body.lecturas.slice(0, 60) : [];
+      if (lecturas.length === 0) return { ok: false, message: 'Anota la temperatura de al menos un cambro.' };
+      const today = core.chileToday(clock());
+      const format = (await repo.listBpmFormats()).map(core.parseBpmFormat).find((item) => item.activo && item.codigo === TRANSFER_FORMAT);
+      if (!format) return { ok: false, message: 'El formato de traslado no está activo.' };
+      const fotoBase64 = typeof body.fotoBase64 === 'string' ? body.fotoBase64 : '';
+      if (fotoBase64.length > MAX_FOTO_BASE64_LENGTH) return { ok: false, message: 'La foto es demasiado grande. Inténtalo de nuevo.' };
+      const fotoContentType = typeof body.fotoContentType === 'string' ? body.fotoContentType : 'image/jpeg';
+
+      const seen = new Set();
+      const prepared = [];
+      for (const lectura of lecturas) {
+        const cambro = await loadAsset(lectura && lectura.codigo);
+        if (!cambro || cambro.categoria !== 'Cambro') return { ok: false, message: 'Uno de los cambros no existe o ya no está en uso.' };
+        if (seen.has(cambro.codigo)) return { ok: false, message: `El ${cambro.nombre} está repetido.` };
+        seen.add(cambro.codigo);
+        const evaluated = core.evaluateBpm(format, {
+          punto: lectura.punto, minimo: lectura.temperatura, maximo: lectura.temperatura,
+          lugar: `${cambro.nombre} · ${momento} · ${destino}`, observacion: lectura.observacion
+        });
+        if (!evaluated.ok) return { ok: false, message: `${cambro.nombre}: ${evaluated.message}` };
+        prepared.push({ cambro, value: evaluated.value });
+      }
+      const fuera = prepared.filter((item) => item.value.Resultado === core.BPM_RESULTADOS.fuera);
+      if (fuera.length > 0 && !fotoBase64) return { ok: false, message: 'Hay cambros fuera de límite: saca una foto como respaldo.' };
+      let fotoUrl = '';
+      if (fotoBase64) {
+        const path = `BpmFotos/${today.slice(0, 7)}/${TRANSFER_FORMAT}-${today}-${Date.now()}-${submissionId}.${extensionFor(fotoContentType)}`;
+        fotoUrl = await uploadFile(path, Buffer.from(fotoBase64, 'base64'), fotoContentType);
+      }
+      for (const [index, item] of prepared.entries()) {
+        try {
+          await repo.createBpmRecord({
+            Title: `${format.codigo} · ${today} · ${item.cambro.nombre}`.slice(0, 255),
+            CodigoFormato: format.codigo,
+            NombreFormato: format.nombre,
+            Fecha: today,
+            Dia: core.dayNumber(today),
+            ...item.value,
+            ActivoCodigo: item.cambro.codigo,
+            FotoUrl: item.value.Resultado === core.BPM_RESULTADOS.fuera ? fotoUrl : '',
+            RegistradoPor: auth.person.label,
+            RegistradoPorCodigo: auth.person.codigo,
+            FechaRegistro: isoNow(),
+            SubmissionId: `${submissionId}-${index}`
+          });
+        } catch (error) {
+          if (!isDuplicateValueError(error)) throw error;
+        }
+      }
+      return {
+        ok: true,
+        fuera: fuera.length,
+        message: fuera.length > 0
+          ? `Traslado guardado: ${fuera.length} cambro(s) FUERA DE LÍMITE. Quedó pendiente una acción correctiva en el ERP: avisa al Jefe de Operaciones.`
+          : `Traslado guardado (${prepared.length} cambro(s), ${momento.toLowerCase()} a ${destino}).`
       };
     },
 
@@ -605,18 +811,35 @@ function createHandlers(deps) {
       if (!submissionId) return { ok: false, message: 'No fue posible registrar la hoja.' };
       const fotoBase64 = typeof body.fotoBase64 === 'string' ? body.fotoBase64 : '';
       const fotoContentType = typeof body.fotoContentType === 'string' ? body.fotoContentType : 'image/jpeg';
-      if (!fotoBase64) return { ok: false, message: 'Saca una foto de la hoja: la foto es el registro.' };
       if (fotoBase64.length > MAX_FOTO_BASE64_LENGTH) return { ok: false, message: 'La foto es demasiado grande. Inténtalo de nuevo.' };
 
       const code = typeof body.codigo === 'string' ? body.codigo.trim() : '';
       const format = (await repo.listBpmFormats()).map(core.parseBpmFormat).find((item) => item.activo && item.codigo === code);
       if (!format) return { ok: false, message: 'Ese formato no existe o está desactivado.' };
-      const evaluated = core.evaluateBpm(format, body);
+      // Si el registro viene del QR de un equipo, el equipo manda: su nombre es el «lugar» y su punto de control es el «qué se midió».
+      let input = body;
+      let asset = null;
+      if (typeof body.activoCodigo === 'string' && body.activoCodigo.trim() !== '') {
+        asset = await loadAsset(body.activoCodigo);
+        if (!asset) return { ok: false, message: 'Ese equipo no existe o ya no está en uso.' };
+        input = { ...body, lugar: asset.nombre };
+        if (format.tipo === 'Temperatura' && asset.punto) input.punto = asset.punto;
+      }
+      const evaluated = core.evaluateBpm(format, input);
       if (!evaluated.ok) return { ok: false, message: evaluated.message };
+      // La foto solo es obligatoria si quedó fuera de límite o si la hoja es periódica (plagas, mensual, trimestral…).
+      // En las hojas diarias normales basta anotar mín/máx o «cumple» en línea.
+      const fueraDeLimite = evaluated.value.Resultado === core.BPM_RESULTADOS.fuera;
+      if (!fotoBase64 && (fueraDeLimite || format.periodoDias > 0)) {
+        return { ok: false, message: fueraDeLimite ? 'Está fuera de límite: saca una foto de la hoja como respaldo.' : 'Esta hoja es periódica: saca una foto de la hoja.' };
+      }
 
-      const buffer = Buffer.from(fotoBase64, 'base64');
-      const path = `BpmFotos/${fecha.slice(0, 7)}/${format.codigo}-${fecha}-${Date.now()}-${submissionId}.${extensionFor(fotoContentType)}`;
-      const fotoUrl = await uploadFile(path, buffer, fotoContentType);
+      let fotoUrl = '';
+      if (fotoBase64) {
+        const buffer = Buffer.from(fotoBase64, 'base64');
+        const path = `BpmFotos/${fecha.slice(0, 7)}/${format.codigo}-${fecha}-${Date.now()}-${submissionId}.${extensionFor(fotoContentType)}`;
+        fotoUrl = await uploadFile(path, buffer, fotoContentType);
+      }
       const detail = [evaluated.value.Punto, evaluated.value.Lugar].filter((part) => part).join(' · ');
       try {
         await repo.createBpmRecord({
@@ -626,6 +849,7 @@ function createHandlers(deps) {
           Fecha: fecha,
           Dia: core.dayNumber(fecha),
           ...evaluated.value,
+          ...(asset ? { ActivoCodigo: asset.codigo } : {}),
           FotoUrl: fotoUrl,
           RegistradoPor: auth.person.label,
           RegistradoPorCodigo: auth.person.codigo,
@@ -662,7 +886,10 @@ const ACTIONS = {
   'decide-damage': 'decideDamage',
   'request-supplies': 'requestSupplies',
   'bpm-list': 'bpmList',
-  'bpm-record': 'bpmRecord'
+  'bpm-record': 'bpmRecord',
+  'equipo-scan': 'equipoScan',
+  'equipo-falla': 'equipoFalla',
+  'traslado-record': 'trasladoRecord'
 };
 
 module.exports = { createHandlers, ACTIONS, GENERIC_ERROR };
