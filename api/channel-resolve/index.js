@@ -8,6 +8,8 @@ const {
 } = require('../shared/repository');
 const { authorizedServices, parseDiasServicio } = require('../shared/serviceCatalog');
 const { sendJson } = require('../shared/respond');
+const { chileTomorrow } = require('../shared/time');
+const { horarioFormFor, horarioFormServices } = require('../shared/horarioForm');
 
 // Siempre la misma forma de respuesta ante cualquier falla — nunca revela si el token
 // alguna vez existió, ni por el mensaje ni distinguiendo el caso en el código HTTP.
@@ -48,13 +50,22 @@ module.exports = async function (context, req) {
       getActiveContractServiceTypes(fields.ContratoId),
       getContract(fields.ContratoId)
     ]);
-    const servicios = authorizedServices(fields.Modalidad, activeServiceTypes, fields.ExcepcionesServicios);
+    const permitidos = authorizedServices(fields.Modalidad, activeServiceTypes, fields.ExcepcionesServicios);
+    // Formulario por horario (ej. Mecamin): rige según la fecha que normalmente se pide (mañana, hora de Chile).
+    const porHorario = horarioFormFor(contract && contract.fields.FormularioPorHorario, chileTomorrow(new Date()));
+    const servicios = porHorario ? horarioFormServices(porHorario, permitidos) : permitidos;
+    const etiquetas = {};
+    const horariosSugeridos = {};
+    if (porHorario) porHorario.servicios.forEach((s) => { etiquetas[s.tipo] = s.nombre; horariosSugeridos[s.tipo] = s.horas; });
 
     sendJson(context, 200, {
       ok: true,
       clienteNombre: clienteNombre || '',
       modalidad: fields.Modalidad,
       servicios,
+      porHorario: Boolean(porHorario),
+      etiquetas,
+      horariosSugeridos,
       horaCierre: fields.HoraCierre || '18:00',
       requierePin: Boolean(fields.PinHash && fields.PinSalt),
       // Para armar la plantilla de Excel de ESTE cliente: su contrato, su plazo y sus días de servicio.

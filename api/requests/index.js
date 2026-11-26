@@ -1,6 +1,7 @@
 const { hashToken, verifySession } = require('../shared/hash');
 const { isWithinDeadline, chileWallClock } = require('../shared/time');
 const { authorizedServices, isColacion } = require('../shared/serviceCatalog');
+const { horarioFormFor } = require('../shared/horarioForm');
 const { sendJson } = require('../shared/respond');
 const {
   findChannelByTokenHash,
@@ -124,14 +125,18 @@ module.exports = async function (context, req) {
     const permitted = authorizedServices(fields.Modalidad, activeServiceTypes, fields.ExcepcionesServicios);
 
     const HORARIO_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+    // Contrato con formulario por horario (ej. Mecamin desde 01-12): TODOS los servicios llegan por bloque horario.
+    const contract = await getContract(fields.ContratoId);
+    const porHorario = Boolean(horarioFormFor(contract && contract.fields.FormularioPorHorario, fechaServicio));
+    const usaBloques = (tipo) => isColacion(tipo) || porHorario;
     const cleanServices = [];
     for (const item of servicios) {
       const tipoServicio = item && item.tipoServicio;
       const cantidad = Number(item && item.cantidad);
       // Horario/observación solo tienen sentido para Colación (varios bloques del mismo día) —
       // para el resto de los servicios se ignoran aunque lleguen, sin romper nada.
-      const horarioRaw = isColacion(tipoServicio) && typeof (item && item.horario) === 'string' ? item.horario.trim() : '';
-      const observacionRaw = isColacion(tipoServicio) && typeof (item && item.observacion) === 'string' ? item.observacion.trim().slice(0, 500) : '';
+      const horarioRaw = usaBloques(tipoServicio) && typeof (item && item.horario) === 'string' ? item.horario.trim() : '';
+      const observacionRaw = usaBloques(tipoServicio) && typeof (item && item.observacion) === 'string' ? item.observacion.trim().slice(0, 500) : '';
       if (!permitted.includes(tipoServicio)) {
         await logRejectedAttempt(channel.id, fields.Codigo, 'Servicio no autorizado');
         sendJson(context, 200, GENERIC_INVALID);
@@ -163,7 +168,6 @@ module.exports = async function (context, req) {
     }
 
     // Fuera de plazo NO es un rechazo: se guarda igual, pendiente de aceptación interna.
-    const contract = await getContract(fields.ContratoId);
     const horasAnticipacion = contract && contract.fields.HorasAnticipacionSolicitudes;
     const fueraDePlazo = !isWithinDeadline(fechaServicio, fields.HoraCierre, now, horasAnticipacion);
     const estadoSolicitud = fueraDePlazo ? 'Extraordinaria pendiente' : 'Oficial';

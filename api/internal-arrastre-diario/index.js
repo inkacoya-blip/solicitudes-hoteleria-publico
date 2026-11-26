@@ -2,6 +2,7 @@ const { chileTomorrow } = require('../shared/time');
 const { authorizedServices, operatesOnWeekday, isColacion } = require('../shared/serviceCatalog');
 const { sendJson } = require('../shared/respond');
 const { fixedOrderLinesFor, contractTakesFixedOrder } = require('../shared/fixedOrder');
+const { horarioFormFor, horarioFormServices } = require('../shared/horarioForm');
 const {
   listActiveChannels,
   listContractsWithFixedOrder,
@@ -106,12 +107,15 @@ module.exports = async function (context, req) {
       if (!operatesOnWeekday(contract.fields.DiasServicio, manana)) continue;
 
       const activeServiceTypes = await getActiveContractServiceTypes(fields.ContratoId);
-      const servicios = authorizedServices(fields.Modalidad, activeServiceTypes, fields.ExcepcionesServicios);
+      const permitidos = authorizedServices(fields.Modalidad, activeServiceTypes, fields.ExcepcionesServicios);
+      // Formulario por horario (ej. Mecamin desde 01-12): solo sus servicios, y TODOS se sugieren por bloque horario.
+      const porHorario = horarioFormFor(contract.fields.FormularioPorHorario, manana);
+      const servicios = porHorario ? horarioFormServices(porHorario, permitidos) : permitidos;
 
       for (const servicio of servicios) {
         // Colación se arrastra por bloque horario — el resto de los servicios sigue igual
-        // que siempre (un solo bloque por día).
-        if (isColacion(servicio)) {
+        // que siempre (un solo bloque por día), salvo en contratos con formulario por horario.
+        if (isColacion(servicio) || porHorario) {
           const priorBlocks = await getLastOfficialColacionBlocksBefore(fields.ContratoId, servicio, manana, contract.fields.SugerenciasDesde);
           if (priorBlocks.length === 0) {
             alertas.push({

@@ -82,6 +82,10 @@
 
   var MIN_COLACION_BLOQUES = 4;
 
+  // Formulario por horario (ej. Mecamin): nombre propio de cada servicio en ese contrato y horas sugeridas.
+  var nombresServicio = {};
+  function nombreServicio(tipo) { return nombresServicio[tipo] || tipo; }
+
   function renderHeader(container, data) {
     var header = el('header', { class: 'brand-header' });
     var logo = el('img', { class: 'brand-logo', src: 'assets/logo-inka-coya.png', alt: 'Inka Coya Hotelería' });
@@ -152,6 +156,7 @@
   // ---------- Portal: encabezado + pestañas ----------
 
   function renderPortal(data, token, sessionToken) {
+    nombresServicio = data.etiquetas || {};
     app.innerHTML = '';
     renderHeader(app, data);
 
@@ -260,16 +265,29 @@
 
     // Colación llega repartida en varios bloques por horario (ver renderColacionBlocks) — el
     // resto de los servicios sigue siendo una sola cantidad por día, como siempre.
+    var porHorario = Boolean(data.porHorario);
+    var horasSugeridas = data.horariosSugeridos || {};
+    nombresServicio = data.etiquetas || {};
+
     function renderColacionBlocks(servicio) {
       var wrap = el('div', { class: 'colacion-group' });
-      wrap.appendChild(el('p', { class: 'colacion-title', text: servicio }));
+      wrap.appendChild(el('p', { class: 'colacion-title', text: nombreServicio(servicio) }));
+      // Horas sugeridas (las de la planilla del cliente): aparecen al escribir la hora y ya puestas en los primeros bloques.
+      var sugeridas = horasSugeridas[servicio] || [];
+      var listId = 'horas-' + servicio.replace(/[^a-zA-Z0-9]/g, '-');
+      if (sugeridas.length > 0) {
+        var datalist = el('datalist', { id: listId });
+        sugeridas.forEach(function (h) { datalist.appendChild(el('option', { value: h })); });
+        wrap.appendChild(datalist);
+      }
       var blocksContainer = el('div', { class: 'colacion-blocks' });
       wrap.appendChild(blocksContainer);
       var blocks = [];
 
       function addBlock(prefillBlock) {
         var row = el('div', { class: 'colacion-block' });
-        var horaInput = el('input', { type: 'time', class: 'colacion-hora', 'aria-label': 'Hora — ' + servicio });
+        var horaInput = el('input', { type: 'time', class: 'colacion-hora', 'aria-label': 'Hora — ' + nombreServicio(servicio) });
+        if (sugeridas.length > 0) horaInput.setAttribute('list', listId);
         var cantidadInput = el('input', { type: 'number', min: '0', step: '1', class: 'colacion-cantidad', 'aria-label': 'Cantidad — ' + servicio, value: '0' });
         var obsInput = el('input', { type: 'text', class: 'colacion-obs', 'aria-label': 'Observación — ' + servicio, placeholder: 'Observación (opcional)' });
         if (prefillBlock) {
@@ -285,7 +303,12 @@
       }
 
       var prefillBlocks = (prefill && prefill.servicios && prefill.servicios[servicio]) || [];
-      var initialCount = Math.max(MIN_COLACION_BLOQUES, prefillBlocks.length);
+      // Sin solicitud anterior: un bloque por cada hora sugerida, con la hora ya puesta (cantidad 0).
+      if (prefillBlocks.length === 0 && sugeridas.length > 0) {
+        prefillBlocks = sugeridas.map(function (h) { return { horario: h, cantidad: 0 }; });
+      }
+      var minimo = isColacion(servicio) ? MIN_COLACION_BLOQUES : 1;
+      var initialCount = Math.max(minimo, prefillBlocks.length);
       for (var i = 0; i < initialCount; i += 1) addBlock(prefillBlocks[i]);
 
       var addButton = el('button', { type: 'button', class: 'secondary-button colacion-add', text: '+ Agregar horario' });
@@ -299,12 +322,12 @@
     var serviceInputs = {};
     var colacionBlocksByServicio = {};
     (data.servicios || []).forEach(function (servicio) {
-      if (isColacion(servicio)) {
+      if (isColacion(servicio) || porHorario) {
         colacionBlocksByServicio[servicio] = renderColacionBlocks(servicio);
         return;
       }
       var id = 'servicio-' + servicio.replace(/\s+/g, '-');
-      var label = el('label', { text: servicio, for: id });
+      var label = el('label', { text: nombreServicio(servicio), for: id });
       var prefillEntry = prefill && prefill.servicios && prefill.servicios[servicio] && prefill.servicios[servicio][0];
       var precargada = prefillEntry ? String(prefillEntry.cantidad) : '0';
       var input = el('input', { type: 'number', min: '0', step: '1', id: id, name: id, value: precargada });
@@ -358,23 +381,32 @@
         .filter(function (item) { return item.cantidad > 0; });
 
       var colacionSinHora = null;
+      var horaRepetida = null;
       Object.keys(colacionBlocksByServicio).forEach(function (servicio) {
+        var horasUsadas = {};
         colacionBlocksByServicio[servicio].forEach(function (block) {
           var cantidad = Number(block.cantidad.value || 0);
           if (cantidad <= 0) return;
           var horario = block.hora.value.trim();
-          if (!horario) { colacionSinHora = servicio; return; }
+          // Las colaciones siempre llevan hora; en el formulario por horario, una comida puede ir sin hora (un solo bloque).
+          if (!horario && isColacion(servicio)) { colacionSinHora = servicio; return; }
+          if (horasUsadas[horario]) { horaRepetida = nombreServicio(servicio) + (horario ? ' ' + horario : ' sin hora'); return; }
+          horasUsadas[horario] = true;
           servicios.push({
             tipoServicio: servicio,
             cantidad: cantidad,
-            horario: horario,
+            horario: horario || undefined,
             observacion: block.observacion.value.trim() || undefined
           });
         });
       });
 
       if (colacionSinHora) {
-        renderMessage(messageBox, 'Indica la hora en cada bloque de ' + colacionSinHora + ' que tenga cantidad mayor a cero.', 'error');
+        renderMessage(messageBox, 'Indica la hora en cada bloque de ' + nombreServicio(colacionSinHora) + ' que tenga cantidad mayor a cero.', 'error');
+        return;
+      }
+      if (horaRepetida) {
+        renderMessage(messageBox, horaRepetida + ' está dos veces: suma las cantidades en un solo bloque.', 'error');
         return;
       }
 
@@ -612,7 +644,7 @@
       tabla.appendChild(cabecera);
       diasLista.forEach(function (dia) {
         var texto = dia.servicios.map(function (item) {
-          return item.tipoServicio + (item.horario ? ' ' + item.horario : '') + ' ' + item.cantidad;
+          return nombreServicio(item.tipoServicio) + (item.horario ? ' ' + item.horario : '') + ' ' + item.cantidad;
         }).join(' · ');
         var estado = dia.estado === 'fuera-de-plazo' ? 'Fuera de plazo' : 'En plazo';
         tabla.appendChild(el('tr', { class: dia.estado === 'fuera-de-plazo' ? 'plan-fuera' : '' }, [
@@ -788,7 +820,7 @@
           rows.forEach(function (s) {
             var meta = STATUS_META[s.estado] || { color: 'gris', label: s.estado };
             var row = el('tr', {});
-            row.appendChild(el('td', { text: s.tipoServicio + (s.horario ? ' · ' + s.horario : '') }));
+            row.appendChild(el('td', { text: nombreServicio(s.tipoServicio) + (s.horario ? ' · ' + s.horario : '') }));
             row.appendChild(el('td', { text: String(s.cantidad) }));
             row.appendChild(el('td', { text: s.observacion || '—' }));
             var statusCell = el('td', {});
