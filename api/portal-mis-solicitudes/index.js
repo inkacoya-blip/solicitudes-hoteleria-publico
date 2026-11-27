@@ -2,7 +2,7 @@ const { hashToken, verifySession } = require('../shared/hash');
 const { chileWallClock } = require('../shared/time');
 const { sendJson } = require('../shared/respond');
 const { findChannelByTokenHash, listRecentServiceRequests } = require('../shared/repository');
-const { displayStatus, computeReplacedIds } = require('../shared/requestStatus');
+const { displayStatus, computeReplacedIds, supersededSuggestionIds } = require('../shared/requestStatus');
 
 const GENERIC_INVALID = { ok: false, message: 'Sesión inválida. Vuelve a ingresar.' };
 const HISTORY_DAYS = 30;
@@ -59,8 +59,11 @@ module.exports = async function (context, req) {
     const recent = await listRecentServiceRequests(fields.ContratoId, since);
 
     const replacedIds = computeReplacedIds(recent);
+    // Si el cliente pidió ese día, las sugerencias automáticas de ese día no se le muestran (no cuentan).
+    const ocultas = supersededSuggestionIds(recent);
 
     const solicitudes = recent
+      .filter((item) => !ocultas.has(Number(item.id)))
       .map((item) => ({
         id: item.id,
         fecha: (item.fields.FechaServicio || '').slice(0, 10),

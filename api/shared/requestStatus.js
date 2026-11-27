@@ -24,4 +24,24 @@ function computeReplacedIds(items) {
   return replacedIds;
 }
 
-module.exports = { displayStatus, computeReplacedIds };
+/**
+ * Ids (Number) de las sugerencias automáticas (arrastre de las 18:05) de un día en que el cliente SÍ envió su
+ * solicitud para ese contrato. Esas sugerencias no cuentan (el ERP las deja en el historial: requestStatus.ts),
+ * así que el portal no se las muestra al cliente, ni siquiera como historial.
+ */
+function supersededSuggestionIds(items) {
+  const keyOf = (f) => `${f.ClienteId}|${f.ContratoId == null ? '' : f.ContratoId}|${String(f.FechaServicio || '').slice(0, 10)}`;
+  const daysWithClientRequest = new Set();
+  items.forEach((item) => {
+    const f = item.fields;
+    const confirmedProjection = f.OrigenSolicitud === 'Proyección automática' && f.EstadoSolicitud === 'Oficial';
+    if (f.EstadoSolicitud !== 'Arrastre automático' && f.EstadoSolicitud !== 'Anulada' && !confirmedProjection) daysWithClientRequest.add(keyOf(f));
+  });
+  const ids = new Set();
+  items.forEach((item) => {
+    if (item.fields.EstadoSolicitud === 'Arrastre automático' && daysWithClientRequest.has(keyOf(item.fields))) ids.add(Number(item.id));
+  });
+  return ids;
+}
+
+module.exports = { displayStatus, computeReplacedIds, supersededSuggestionIds };
